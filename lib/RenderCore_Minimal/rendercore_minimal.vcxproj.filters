@@ -5,13 +5,16 @@
     <ClCompile Include="core_api.cpp">
       <Filter>API</Filter>
     </ClCompile>
-    <ClCompile Include="mesh.cpp">
+    <ClCompile Include="aabb.cpp">
+      <Filter>components</Filter>
+    </ClCompile>
+    <ClCompile Include="bvh.cpp">
       <Filter>components</Filter>
     </ClCompile>
     <ClCompile Include="material.cpp">
       <Filter>components</Filter>
     </ClCompile>
-    <ClCompile Include="bvh.cpp">
+    <ClCompile Include="mesh.cpp">
       <Filter>components</Filter>
     </ClCompile>
     <ClCompile Include="ray.cpp">
@@ -20,7 +23,7 @@
     <ClCompile Include="raypacket.cpp">
       <Filter>components</Filter>
     </ClCompile>
-    <ClCompile Include="aabb.cpp">
+    <ClCompile Include="sky.cpp">
       <Filter>components</Filter>
     </ClCompile>
   </ItemGroup>
@@ -30,31 +33,34 @@
     <ClInclude Include="core_api.h">
       <Filter>API</Filter>
     </ClInclude>
-    <ClInclude Include="ray.h">
-      <Filter>components</Filter>
-    </ClInclude>
-    <ClInclude Include="mesh.h">
-      <Filter>components</Filter>
-    </ClInclude>
-    <ClInclude Include="hitinfo.h">
-      <Filter>components</Filter>
-    </ClInclude>
-    <ClInclude Include="material.h">
-      <Filter>components</Filter>
-    </ClInclude>
-    <ClInclude Include="texture.h">
-      <Filter>components</Filter>
-    </ClInclude>
-    <ClInclude Include="light.h">
+    <ClInclude Include="aabb.h">
       <Filter>components</Filter>
     </ClInclude>
     <ClInclude Include="bvh.h">
       <Filter>components</Filter>
     </ClInclude>
+    <ClInclude Include="hitInfo.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="light.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="mesh.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="ray.h">
+      <Filter>components</Filter>
+    </ClInclude>
     <ClInclude Include="raypacket.h">
       <Filter>components</Filter>
     </ClInclude>
-    <ClInclude Include="aabb.h">
+    <ClInclude Include="texture.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="material.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="sky.h">
       <Filter>components</Filter>
     </ClInclude>
   </ItemGroup>
@@ -63,10 +69,7 @@
       <UniqueIdentifier>{85ca225a-7b4b-4626-9d4f-c778bf53cb0c}</UniqueIdentifier>
     </Filter>
     <Filter Include="components">
-      <UniqueIdentifier>{34610794-32f8-4725-b2fc-e946a2549a73}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="accelerators">
-      <UniqueIdentifier>{ed19ff5f-6c7f-4480-9d66-7f060edfbf42}</UniqueIdentifier>
+      <UniqueIdentifier>{aede755a-6c33-468d-bd90-b18c6f32249c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

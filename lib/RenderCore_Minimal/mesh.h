@@ -16,6 +16,7 @@ public:
 	uint triangleCount = 0;
 	uint primitiveIndex = -1;
 	uint meshIdx = -1;
+	uint lightIdx = -1; // when mesh is an area light, this idx links the mesh with a
 	CoreTri* triangles = 0;							// 'fat' triangle data
 	float3* centroids = 0; // centroids of the triangles
 	BVH* bvh = new BVH();

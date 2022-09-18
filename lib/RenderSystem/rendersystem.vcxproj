@@ -53,7 +53,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">rendersystem.h</PrecompiledHeaderFile>
     </ClCompile>
-    <ClCompile Include="host_mesh_tinyobj.cpp">
+    <ClCompile Include="host_meshloaders.cpp">
       <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</IntrinsicFunctions>
       <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Speed</FavorSizeOrSpeed>
@@ -62,8 +62,7 @@
       <SDLCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</SDLCheck>
       <MultiProcessorCompilation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</MultiProcessorCompilation>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-      </PrecompiledHeaderFile>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">rendersystem.h</PrecompiledHeaderFile>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">rendersystem.h</PrecompiledHeaderFile>
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Full</Optimization>
@@ -93,6 +92,36 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">rendersystem.h</PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="materials\pbrt\api.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="materials\pbrt\paramset.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="materials\pbrt\pbrtparser.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="materials\pbrt\plymesh.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="materials\pbrt\spectrum.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">materials/pbrt/pbrtparser.h</PrecompiledHeaderFile>
+    </ClCompile>
     <ClCompile Include="rendersystem.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">rendersystem.h</PrecompiledHeaderFile>
@@ -110,6 +139,7 @@
     <ClInclude Include="..\tinyxml2\tinyxml2.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="common_classes.h" />
+    <ClInclude Include="common_functions.h" />
     <ClInclude Include="common_settings.h" />
     <ClInclude Include="common_types.h" />
     <ClInclude Include="core_api_base.h" />
@@ -121,6 +151,8 @@
     <ClInclude Include="host_scene.h" />
     <ClInclude Include="host_skydome.h" />
     <ClInclude Include="host_texture.h" />
+    <ClInclude Include="materials\pbrt\pbrtparser.h" />
+    <ClInclude Include="materials\pbrt\spectrum.h" />
     <ClInclude Include="rendersystem.h" />
     <ClInclude Include="render_api.h" />
   </ItemGroup>
@@ -165,8 +197,8 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>RENDERSYSTEMBUILD;WIN32;WIN64;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);FBXSDK_SHARED</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../RenderCore_Prime;../tinyxml2;../platform;../tinygltf</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>RENDERSYSTEMBUILD;PBRT_IS_WINDOWS;WIN32;WIN64;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);FBXSDK_SHARED</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);.;../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../RenderCore_Prime;../tinyxml2;../platform;../tinygltf/rapidjson;../tinygltf</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -192,8 +224,8 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>RENDERSYSTEMBUILD;WIN32;WIN64;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);FBXSDK_SHARED</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../RenderCore_Prime;../tinyxml2;../platform;../tinygltf</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>RENDERSYSTEMBUILD;PBRT_IS_WINDOWS;WIN32;WIN64;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);FBXSDK_SHARED</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);.;../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../RenderCore_Prime;../tinyxml2;../platform;../tinygltf/rapidjson;../tinygltf</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <DebugInformationFormat>None</DebugInformationFormat>

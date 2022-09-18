@@ -39,6 +39,7 @@ namespace lh2core {
 	public:
 		AreaLight() : Light(LightType::AreaLight) {};
 		float area = 0.0f;
+		float3 normal = float3({0, 1, 0});
 		float3 v1v0;
 		float3 v2v0;
 		float3 v0, v1, v2;

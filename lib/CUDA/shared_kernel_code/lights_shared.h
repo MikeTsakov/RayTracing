@@ -22,7 +22,7 @@
 #include "noerrors.h"
 
 #define ISLIGHTS
-#define MAXISLIGHTS	8
+#define MAXISLIGHTS	64
 
 #define AREALIGHTCOUNT			lightCounts.x
 #define POINTLIGHTCOUNT			lightCounts.y
@@ -112,7 +112,7 @@ LH2_DEVFUNC float PotentialDirectionalLightContribution( const int idx, const fl
 //  +-----------------------------------------------------------------------------+
 LH2_DEVFUNC float CalculateLightPDF( const float3& D, const float t, const float lightArea, const float3 lightNormal )
 {
-	return (t * t) / (-dot( D, lightNormal ) * lightArea);
+	return (t * t) / (abs( dot( D, lightNormal ) ) * lightArea);
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -135,32 +135,6 @@ LH2_DEVFUNC float LightPickProb( int idx, const float3& O, const float3& N, cons
 #else
 	return 1.0f / AREALIGHTCOUNT; // should I include delta lights?
 #endif
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RandomBarycentrics                                                         |
-//  |  Helper function for selecting a random point on a triangle. From:          |
-//  |  https://pharr.org/matt/blog/2019/02/27/triangle-sampling-1.html      LH2'19|
-//  +-----------------------------------------------------------------------------+
-LH2_DEVFUNC float3 RandomBarycentrics( const float r0 )
-{
-	const uint uf = (uint)(r0 * (1ull << 32));			// convert to 0:32 fixed point
-	float2 A = make_float2( 1, 0 ), B = make_float2( 0, 1 ), C = make_float2( 0, 0 ); // barycentrics
-	for (int i = 0; i < 16; ++i)						// for each base-4 digit
-	{
-		const int d = (uf >> (2 * (15 - i))) & 0x3;		// get the digit
-		float2 An, Bn, Cn;
-		switch (d)
-		{
-		case 0: An = (B + C) * 0.5f; Bn = (A + C) * 0.5f; Cn = (A + B) * 0.5f; break;
-		case 1: An = A; Bn = (A + B) * 0.5f; Cn = (A + C) * 0.5f; break;
-		case 2: An = (B + A) * 0.5f; Bn = B; Cn = (B + C) * 0.5f; break;
-		case 3: An = (C + A) * 0.5f; Bn = (C + B) * 0.5f; Cn = C; break;
-		}
-		A = An, B = Bn, C = Cn;
-	}
-	const float2 r = (A + B + C) * 0.3333333f;
-	return make_float3( r.x, r.y, 1 - r.x - r.y );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -224,9 +198,9 @@ LH2_DEVFUNC float3 RandomPointOnLight( float r0, float r1, const float3& I, cons
 	{
 		// pick a pointlight
 		const CorePointLight4& light = (const CorePointLight4&)pointLights[lightIdx - AREALIGHTCOUNT];
-		const float3 pos = make_float3( light.data0 );			// position
-		const float3 lightColor = make_float3( light.data1 );	// radiance
-		const float3 L = I - pos; // reversed
+		const float3 pos = make_float3( light.data0 );	// position
+		lightColor = make_float3( light.data1 );	// radiance
+		const float3 L = I - pos;				// reversed
 		const float sqDist = dot( L, L );
 		lightPdf = dot( L, N ) < 0 ? sqDist : 0;
 		return pos;
@@ -398,12 +372,12 @@ LH2_DEVFUNC float3 Sample_Le( const float& r0, float r1, const float& r2, const 
 		const CoreDirectionalLight4& light = (const CoreDirectionalLight4&)directionalLights[lightIdx - (AREALIGHTCOUNT + POINTLIGHTCOUNT + SPOTLIGHTCOUNT)];
 		const float3 L = make_float3( light.data0 );	// direction
 		lightColor = make_float3( light.data1 );		// radiance
-#ifdef DIRECTIONAL_LIGHT
+	#ifdef DIRECTIONAL_LIGHT
 		const float3 pos = SCENE_CENTER - SCENE_RADIUS * L;
 		normal = lightDir = L;
 		pdfPos = 1.0f / SCENE_AREA;
 		pdfDir = 1.0f;
-#endif
+	#endif
 		return pos;
 	}
 }

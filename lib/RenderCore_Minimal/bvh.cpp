@@ -339,8 +339,8 @@ namespace lh2core {
 			ray.o = make_float3(instance->inverseTransform * make_float4(ray.o, 1.0));
 			ray.d = make_float3(instance->inverseDirectionTransform * make_float4(ray.d, 0.0));
 			bool result = instance->mesh->bvh->Intersect(ray, hitInfo, traverseCounter);
-			hitInfo->hitNormal = make_float3(instance->directionTransform * make_float4(hitInfo->hitNormal, 0.0));
 			hitInfo->intersection = make_float3(instance->transform * make_float4(hitInfo->intersection, 1.0));
+			hitInfo->hitNormal = make_float3(instance->directionTransform * make_float4(hitInfo->hitNormal, 0.0));
 			ray.o = make_float3(instance->transform * make_float4(ray.o, 1.0));
 			ray.d = make_float3(instance->directionTransform * make_float4(ray.d, 0.0));
 			return result;

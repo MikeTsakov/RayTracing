@@ -27,17 +27,13 @@ struct DeviceVars
 	// impossible values to trigger an update in the first frame
 	float clampValue = -1.0f;
 	float geometryEpsilon = 1e34f;
-	float filterClampDirect = 2.5f;
-	float filterClampIndirect = 15.0f;
-	uint filterEnabled = 1;
-	uint TAAEnabled = 1;
 };
 
 //  +-----------------------------------------------------------------------------+
 //  |  RenderCore                                                                 |
 //  |  Encapsulates device code.                                            LH2'19|
 //  +-----------------------------------------------------------------------------+
-class RenderCore
+class RenderCore : public CoreAPI_Base
 {
 public:
 	// methods
@@ -46,17 +42,15 @@ public:
 	void Setting( const char* name, const float value );
 	void SetTarget( GLTexture* target, const uint spp );
 	void Shutdown();
-	void KeyDown( const uint key ) {}
-	void KeyUp( const uint key ) {}
 	// passing data. Note: RenderCore always copies what it needs; the passed data thus remains the
 	// property of the caller, and can be safely deleted or modified as soon as these calls return.
 	void SetTextures( const CoreTexDesc* tex, const int textureCount );
-	void SetMaterials( CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount ); // textures must be in sync when calling this
+	void SetMaterials( CoreMaterial* mat, const int materialCount ); // textures must be in sync when calling this
 	void SetLights( const CoreLightTri* areaLights, const int areaLightCount,
 		const CorePointLight* pointLights, const int pointLightCount,
 		const CoreSpotLight* spotLights, const int spotLightCount,
 		const CoreDirectionalLight* directionalLights, const int directionalLightCount );
-	void SetSkyData( const float3* pixels, const uint width, const uint height );
+	void SetSkyData( const float3* pixels, const uint width, const uint height, const mat4& worldToLight );
 	// geometry and instances:
 	// a scene is setup by first passing a number of meshes (geometry), then a number of instances.
 	// note that stored meshes can be used zero, one or multiple times in the scene.
@@ -65,6 +59,7 @@ public:
 	void SetInstance( const int instanceIdx, const int modelIdx, const mat4& transform );
 	void UpdateToplevel() { /* nothing here for a rasterizer */ }
 	void SetProbePos( const int2 pos );
+	CoreStats GetCoreStats() const override;
 	// internal methods
 private:
 	// data members

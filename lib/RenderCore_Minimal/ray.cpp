@@ -26,10 +26,9 @@ namespace lh2core {
 		// at this stage we can compute t to find out where
 		// the intersection point is on the line
 		tHit = f * dot(e2, q);
-		if (tHit > 0.00001) {// ray intersection
+		if (tHit > 0.00001 && tHit < tMax) {// ray intersection
 			return true;
-		}
-		else {// this means that there is a line intersection but not a ray intersection
+		} else {// this means that there is a line intersection but not a ray intersection
 			return false;
 		}
 	}

@@ -17,7 +17,8 @@
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 
-namespace lh2core {
+namespace lh2core
+{
 
 // forward declaration of cuda code
 const surfaceReference* renderTargetRef();
@@ -32,7 +33,7 @@ void InitCountersSubsequent();
 
 // setters / getters
 void SetInstanceDescriptors( CoreInstanceDesc* p );
-void SetMaterialList( CoreMaterial* p );
+void SetMaterialList( CUDAMaterial* p );
 void SetAreaLights( CoreLightTri* p );
 void SetPointLights( CorePointLight* p );
 void SetSpotLights( CoreSpotLight* p );
@@ -43,6 +44,7 @@ void SetARGB128Pixels( float4* p );
 void SetNRM32Pixels( uint* p );
 void SetSkyPixels( float3* p );
 void SetSkySize( int w, int h );
+void SetWorldToSky( const mat4& worldToLight );
 void SetPathStates( PathState* p );
 void SetDebugData( float4* p );
 void SetGeometryEpsilon( float e );
@@ -58,7 +60,7 @@ struct SBTRecord { __align__( OPTIX_SBT_RECORD_ALIGNMENT ) char header[OPTIX_SBT
 
 const char *ParseOptixError( OptixResult r )
 {
-	switch ( r )
+	switch (r)
 	{
 	case OPTIX_SUCCESS: return "NO ERROR";
 	case OPTIX_ERROR_INVALID_VALUE: return "OPTIX_ERROR_INVALID_VALUE";
@@ -144,11 +146,11 @@ void RenderCore::CreateOptixContext( int cc )
 		else if (cc / 10 == 6) file = "../../lib/RenderCore_Optix7/optix/.optix.pascal.cu.ptx";
 		else if (cc / 10 == 5) file = "../../lib/RenderCore_Optix7/optix/.optix.maxwell.cu.ptx";
 		FILE* f;
-#ifdef _MSC_VER
+	#ifdef _MSC_VER
 		fopen_s( &f, file, "rb" );
-#else
+	#else
 		f = fopen( file, "rb" );
-#endif
+	#endif
 		int len;
 		fread( &len, 1, 4, f );
 		char* t = new char[len];
@@ -220,7 +222,7 @@ void RenderCore::CreateOptixContext( int cc )
 
 	// create the shader binding table
 	SBTRecord rsbt[5] = {}; // , ms_sbt[2], hg_sbt[2];
-	for( int i = 0; i < 5; i++ ) optixSbtRecordPackHeader( progGroup[i], &rsbt[i] );
+	for (int i = 0; i < 5; i++) optixSbtRecordPackHeader( progGroup[i], &rsbt[i] );
 	sbt.raygenRecord = (CUdeviceptr)(new CoreBuffer<SBTRecord>( 1, ON_DEVICE, &rsbt[0] ))->DevPtr();
 	sbt.missRecordBase = (CUdeviceptr)(new CoreBuffer<SBTRecord>( 2, ON_DEVICE, &rsbt[1] ))->DevPtr();
 	sbt.hitgroupRecordBase = (CUdeviceptr)(new CoreBuffer<SBTRecord>( 2, ON_DEVICE, &rsbt[3] ))->DevPtr();
@@ -234,6 +236,11 @@ void RenderCore::CreateOptixContext( int cc )
 //  +-----------------------------------------------------------------------------+
 void RenderCore::Init()
 {
+#ifdef _DEBUG
+	printf( "Initializing Optix7 core - DEBUG build.\n" );
+#else
+	printf( "Initializing Optix7 core - RELEASE build.\n" );
+#endif
 	// select the fastest device
 	uint device = CUDATools::FastestDevice();
 	cudaSetDevice( device );
@@ -270,7 +277,7 @@ void RenderCore::Init()
 	// allow CoreMeshes to access the core
 	CoreMesh::renderCore = this;
 	// prepare timing events
-	for( int i = 0; i < MAXPATHLENGTH; i++ )
+	for (int i = 0; i < MAXPATHLENGTH; i++)
 	{
 		cudaEventCreate( &shadeStart[i] );
 		cudaEventCreate( &shadeEnd[i] );
@@ -507,32 +514,51 @@ void RenderCore::SyncStorageType( const TexelStorage storage )
 //  |  RenderCore::SetMaterials                                                   |
 //  |  Set the material data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetMaterials( CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount )
+#define TOCHAR(a) ((uint)((a)*255.0f))
+#define TOUINT4(a,b,c,d) (TOCHAR(a)+(TOCHAR(b)<<8)+(TOCHAR(c)<<16)+(TOCHAR(d)<<24))
+void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
 {
 	// Notes:
 	// Call this after the textures have been set; CoreMaterials store the offset of each texture
 	// in the continuous arrays; this data is valid only when textures are in sync.
 	delete materialBuffer;
 	delete hostMaterialBuffer;
-	hostMaterialBuffer = new CoreMaterial[materialCount];
-	memcpy( hostMaterialBuffer, mat, materialCount * sizeof( CoreMaterial ) );
+	hostMaterialBuffer = new CUDAMaterial[materialCount];
 	for (int i = 0; i < materialCount; i++)
 	{
-		CoreMaterial& m = hostMaterialBuffer[i];
-		const CoreMaterialEx& e = matEx[i];
-		if (e.texture[0] != -1) m.texaddr0 = texDescs[e.texture[0]].firstPixel;
-		if (e.texture[1] != -1) m.texaddr1 = texDescs[e.texture[1]].firstPixel;
-		if (e.texture[2] != -1) m.texaddr2 = texDescs[e.texture[2]].firstPixel;
-		if (e.texture[3] != -1) m.nmapaddr0 = texDescs[e.texture[3]].firstPixel;
-		if (e.texture[4] != -1) m.nmapaddr1 = texDescs[e.texture[4]].firstPixel;
-		if (e.texture[5] != -1) m.nmapaddr2 = texDescs[e.texture[5]].firstPixel;
-		if (e.texture[6] != -1) m.smapaddr = texDescs[e.texture[6]].firstPixel;
-		if (e.texture[7] != -1) m.rmapaddr = texDescs[e.texture[7]].firstPixel;
-		// if (e.texture[ 8] != -1) m.texaddr0 = texDescs[e.texture[ 8]].firstPixel; second roughness map is not used
-		if (e.texture[9] != -1) m.cmapaddr = texDescs[e.texture[9]].firstPixel;
-		if (e.texture[10] != -1) m.amapaddr = texDescs[e.texture[10]].firstPixel;
+		// perform conversion to internal material format
+		CoreMaterial& m = mat[i];
+		CUDAMaterial& gpuMat = hostMaterialBuffer[i];
+		memset( &gpuMat, 0, sizeof( CUDAMaterial ) );
+		gpuMat.diffuse_r = m.color.value.x,
+		gpuMat.diffuse_g = m.color.value.y;
+		gpuMat.diffuse_b = m.color.value.z;
+		gpuMat.transmittance_r = 1 - m.absorption.value.x;
+		gpuMat.transmittance_g = 1 - m.absorption.value.y;
+		gpuMat.transmittance_b = 1 - m.absorption.value.z;
+		gpuMat.parameters.x = TOUINT4( m.metallic.value, m.subsurface.value, m.specular.value, m.roughness.value );
+		gpuMat.parameters.y = TOUINT4( m.specularTint.value, m.anisotropic.value, m.sheen.value, m.sheenTint.value );
+		gpuMat.parameters.z = TOUINT4( m.clearcoat.value, m.clearcoatGloss.value, m.transmission.value, 0 );
+		gpuMat.parameters.w = *((uint*)&m.eta);
+		if (m.color.textureID != -1) gpuMat.tex0 = Map<CoreMaterial::Vec3Value>( m.color );
+		if (m.detailColor.textureID != -1) gpuMat.tex1 = Map<CoreMaterial::Vec3Value>( m.detailColor );
+		if (m.normals.textureID != -1) gpuMat.nmap0 = Map<CoreMaterial::Vec3Value>( m.normals );
+		if (m.detailNormals.textureID != -1) gpuMat.nmap1 = Map<CoreMaterial::Vec3Value>( m.detailNormals );
+		if (m.roughness.textureID != -1) gpuMat.rmap = Map<CoreMaterial::ScalarValue>( m.roughness );
+		if (m.specular.textureID != -1) gpuMat.smap = Map<CoreMaterial::ScalarValue>( m.specular );
+		bool hdr = false;
+		if (m.color.textureID != -1) if (texDescs[m.color.textureID].flags & 8 /* HostTexture::HDR */) hdr = true;
+		gpuMat.flags =
+			(m.eta.value < 1 ? ISDIELECTRIC : 0) + (hdr ? DIFFUSEMAPISHDR : 0) +
+			(m.color.textureID != -1 ? HASDIFFUSEMAP : 0) +
+			(m.normals.textureID != -1 ? HASNORMALMAP : 0) +
+			(m.specular.textureID != -1 ? HASSPECULARITYMAP : 0) +
+			(m.roughness.textureID != -1 ? HASROUGHNESSMAP : 0) +
+			(m.detailNormals.textureID != -1 ? HAS2NDNORMALMAP : 0) +
+			(m.detailColor.textureID != -1 ? HAS2NDDIFFUSEMAP : 0) +
+			((m.flags & 1) ? HASSMOOTHNORMALS : 0) + ((m.flags & 2) ? HASALPHA : 0);
 	}
-	materialBuffer = new CoreBuffer<CoreMaterial>( materialCount, ON_DEVICE | ON_HOST /* on_host: for alpha mapped tris */, hostMaterialBuffer );
+	materialBuffer = new CoreBuffer<CUDAMaterial>( materialCount, ON_DEVICE | ON_HOST /* on_host: for alpha mapped tris */, hostMaterialBuffer );
 	SetMaterialList( materialBuffer->DevPtr() );
 }
 
@@ -560,12 +586,13 @@ void RenderCore::SetLights( const CoreLightTri* areaLights, const int areaLightC
 //  |  RenderCore::SetSkyData                                                     |
 //  |  Set the sky dome data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetSkyData( const float3* pixels, const uint width, const uint height )
+void RenderCore::SetSkyData( const float3* pixels, const uint width, const uint height, const mat4& worldToLight )
 {
 	delete skyPixelBuffer;
 	skyPixelBuffer = new CoreBuffer<float3>( width * height, ON_DEVICE, pixels );
 	SetSkyPixels( skyPixelBuffer->DevPtr() );
 	SetSkySize( width, height );
+	SetWorldToSky( worldToLight );
 	skywidth = width;
 	skyheight = height;
 }
@@ -582,7 +609,6 @@ void RenderCore::Setting( const char* name, const float value )
 		{
 			vars.geometryEpsilon = value;
 			SetGeometryEpsilon( value );
-			// context["geometryEpsilon"]->setFloat( value );
 		}
 	}
 	else if (!strcmp( name, "clampValue" ))
@@ -677,7 +703,7 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 		if (pathLength == 1)
 		{
 			// spawn and extend camera rays
-			params.phase = 0;
+			params.phase = Params::SPAWN_PRIMARY;
 			coreStats.primaryRayCount = pathCount;
 			InitCountersForExtend( pathCount );
 			cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
@@ -687,7 +713,7 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 		{
 			// extend bounced paths
 			if (pathLength == 2) coreStats.bounce1RayCount = pathCount; else coreStats.deepRayCount += pathCount;
-			params.phase = 1;
+			params.phase = Params::SPAWN_SECONDARY;
 			InitCountersSubsequent();
 			cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
 			CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, pathCount, 1, 1 ) );
@@ -710,7 +736,7 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 		uint maxShadowRays = connectionBuffer->GetSize() / 3;
 		if ((pathCount + counters.shadowRays) >= maxShadowRays) if (counters.shadowRays > 0)
 		{
-			params.phase = 2;
+			params.phase = Params::SPAWN_SHADOW;
 			cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
 			CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
 			counterBuffer->HostPtr()[0].shadowRays = 0;
@@ -722,7 +748,7 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 	cudaEventRecord( shadowStart );
 	if (counters.shadowRays > 0)
 	{
-		params.phase = 2;
+		params.phase = Params::SPAWN_SHADOW;
 		cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
 		CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
 	}
@@ -743,8 +769,8 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 	coreStats.traceTime1 = CUDATools::Elapsed( traceStart[1], traceEnd[1] );
 	coreStats.shadowTraceTime = CUDATools::Elapsed( shadowStart, shadowEnd );
 	coreStats.traceTimeX = coreStats.shadeTime = 0;
-	for( int i = 2; i < actualPathLength; i++ ) coreStats.traceTimeX += CUDATools::Elapsed( traceStart[i], traceEnd[i] );
-	for( int i = 0; i < actualPathLength; i++ ) coreStats.shadeTime += CUDATools::Elapsed( shadeStart[i], shadeEnd[i] );
+	for (int i = 2; i < actualPathLength; i++) coreStats.traceTimeX += CUDATools::Elapsed( traceStart[i], traceEnd[i] );
+	for (int i = 0; i < actualPathLength; i++) coreStats.shadeTime += CUDATools::Elapsed( shadeStart[i], shadeEnd[i] );
 	coreStats.probedInstid = counters.probedInstid;
 	coreStats.probedTriid = counters.probedTriid;
 	coreStats.probedDist = counters.probedDist;
@@ -763,6 +789,15 @@ void RenderCore::Shutdown()
 	cudaFree( (void*)sbt.raygenRecord );
 	cudaFree( (void*)sbt.missRecordBase );
 	cudaFree( (void*)sbt.hitgroupRecordBase );
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  RenderCore::GetCoreStats                                                   |
+//  |  Get a copy of the counters.                                          LH2'19|
+//  +-----------------------------------------------------------------------------+
+CoreStats RenderCore::GetCoreStats() const 
+{
+	return coreStats;
 }
 
 // EOF

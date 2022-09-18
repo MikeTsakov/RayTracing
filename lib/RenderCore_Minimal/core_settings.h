@@ -22,16 +22,9 @@
 
 #include "platform.h"
 
-#ifdef _DEBUG
-#pragma comment(lib, "../platform/lib/debug/platform.lib" )
-#else
-#pragma comment(lib, "../platform/lib/release/platform.lib" )
-#endif
-
 using namespace lighthouse2;
 
 #include "core_api_base.h"
-#include "core_api.h"
 #include "omp.h"
 
 #include "ray.h"
@@ -43,10 +36,10 @@ using namespace lighthouse2;
 #include "texture.h"
 #include "material.h"
 #include "mesh.h"
+#include "sky.h"
 
 #include "rendercore.h"
 
 using namespace lh2core;
-
 
 // EOF

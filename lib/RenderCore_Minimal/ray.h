@@ -1,7 +1,5 @@
 #pragma once
 
-#define RECURSIONLIMIT 4
-
 namespace lh2core
 {
 	struct Ray

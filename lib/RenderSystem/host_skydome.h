@@ -29,7 +29,7 @@ public:
 	// constructor / destructor
 	HostSkyDome();
 	~HostSkyDome();
-	void Load();
+	void Load( const char* filename, const float3 scale = {1.f, 1.f, 1.f} );
 	// public data members
 	float3* pixels = nullptr;			// HDR texture data for sky dome
 	int width = 0;						// width of the sky texture
@@ -37,6 +37,7 @@ public:
 	float* cdf = nullptr;				// cdf for importance sampling
 	float* pdf = nullptr;				// pdf for importance sampling
 	float* columncdf = nullptr;			// column cdf for importance sampling
+	mat4 worldToLight;					// for PBRT scenes; transform for skydome
 	TRACKCHANGES;						// add Changed(), MarkAsDirty() methods, see system.h
 };
 

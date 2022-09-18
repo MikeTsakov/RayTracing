@@ -22,30 +22,47 @@ namespace lh2core
 //  |  RenderCore                                                                 |
 //  |  Encapsulates device code.                                            LH2'19|
 //  +-----------------------------------------------------------------------------+
-class RenderCore
+class RenderCore : public CoreAPI_Base
 {
 public:
 	// methods
 	void Init();
-	void SetTarget( GLTexture* target );
+	void SetTarget( GLTexture* target, const uint spp );
 	void SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles, const uint* alphaFlags = 0 );
-	void SetInstance(const int instanceIdx, const int modelIdx, const mat4& transform = mat4::Identity());
-	void SetMaterials(CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount);
-	void SetTextures(const CoreTexDesc* tex, const int textureCount);
 	void Render( const ViewPyramid& view, const Convergence converge );
+	CoreStats GetCoreStats() const override;
 	void Shutdown();
+
+	// unimplemented for the minimal core
+	inline void SetProbePos(const int2 pos) override {};
+	inline void Setting(const char* name, float value) override {};
+	void SetSkyData(const float3* pixels, const uint width, const uint height, const mat4& worldToLight);
+	
+	// implemented for the minimal core
+	void SetTextures(const CoreTexDesc* tex, const int textureCount);
+	void SetMaterials(CoreMaterial* mat, const int materialCount);
 	void SetLights(const CoreLightTri* areaLights, const int areaLightCount,
 		const CorePointLight* pointLights, const int pointLightCount,
 		const CoreSpotLight* spotLights, const int spotLightCount,
 		const CoreDirectionalLight* directionalLights, const int directionalLightCount);
-	void UpdateToplevel();
+	void SetInstance(const int instanceIdx, const int modelIdx, const mat4& transform);
+	void UpdateToplevel() override;
+
+	// custom methods
 	bool TraceShadow(const Ray);
-	float3 Trace(Ray& ray, const int depth, int& traverseDepth);
+	float2 RejectionSampleDisk(float radius = 1.0f);
+	float3 DiffuseReflection(float3 normal);
+	float3 CosineWeightedDiffuseReflection(float3 normal);
+	float3 WhittedTrace(Ray& ray, const int depth, int& traverseDepth);
+	float3 WhittedDirectIllumination(const float3 intersection, const float3 hitNormal);
+	float3 PathTrace(Ray& ray, int depth, int& traverseDepth, bool lastSpecular, float3 pweight);
+	float3 PathDirectIllumination(const float3 intersection, const float3 hitNormal, float3 viewDir,
+		float3 specular, float3 diffuse, float alpha, bool doMIS);
 	void Trace(RayPacket& rayPacket, Frustum& frustum, const int depth, int* traverseDepth, float3* colors);
-	float3 DirectIllumination(const float3 intersection, const float3 hitNormal);
 	bool NearestIntersection(Ray& ray, HitInfo* hitInfo);
 	bool NearestIntersection(RayPacket& rayPacket, Frustum& frustum, HitInfo* hitInfo);
-	// internal methods
+
+	CoreStats coreStats;							// rendering statistics
 private:
 	// data members
 	Bitmap* screen = 0;								// temporary storage of RenderCore output; will be copied to render target
@@ -56,8 +73,7 @@ private:
 	vector<Material*> mats;
 	vector<Texture*> texs;
 	TopBVH* topBVH;
-public:
-	CoreStats coreStats;							// rendering statistics
+	Sky* sky;
 };
 
 } // namespace lh2core

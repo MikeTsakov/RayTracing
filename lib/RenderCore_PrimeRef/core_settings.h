@@ -13,7 +13,7 @@
    limitations under the License.
 
    The settings and classes in this file are core-specific:
-   - avilable in host and device code
+   - available in host and device code
    - specific to this particular core.
    Global settings can be configured shared.h.
 */
@@ -23,14 +23,9 @@
 // core-specific settings
 #define CLAMPFIREFLIES		// suppress fireflies by clamping
 #define MAXPATHLENGTH		64
-// #define USE_LAMBERT_BSDF	// override default microfacet model
-// #define USE_MULTISCATTER_BSDF // override default microfacet model
-// #define GGXCONDUCTOR // alternative is the diffuse ggx brdf
-#define SINGLEBOUNCE		// perform only a single diffuse bounce
 #define CONSISTENTNORMALS	// consistent normal interpolation; don't use with filtering?
 
 // low-level settings
-#define SCATTERSTEPS 1		// max bounces in microfacet evaluation (multiscatter bsdf)
 #define BLUENOISE			// use blue noise instead of uniform random numbers
 #define TAA					// really basic temporal antialiasing
 #define BILINEAR			// enable bilinear interpolation
@@ -40,13 +35,6 @@
 #define NOHIT				-1
 
 #ifndef __CUDACC__
-
-#ifdef _DEBUG
-#pragma comment(lib, "../platform/lib/debug/platform.lib" )
-#else
-#pragma comment(lib, "../platform/lib/release/platform.lib" )
-#endif
-#pragma comment(lib, "../OptiX/lib64/optix_prime.1.lib" )
 
 #define CUDABUILD
 #include "helper_math.h"	// for vector types
@@ -95,6 +83,54 @@ struct Counters
 	float probedDist;
 };
 
+// internal material representation
+struct CUDAMaterial
+{
+#ifndef OPTIX_CU
+	struct Map { short width, height; half uscale, vscale, uoffs, voffs; uint addr; };
+	// data to be read unconditionally
+	half diffuse_r, diffuse_g, diffuse_b, transmittance_r, transmittance_g, transmittance_b; uint flags;
+	uint4 parameters; // 16 Disney principled BRDF parameters, 0.8 fixed point
+	// texture / normal map descriptors; exactly 128-bit each
+	Map tex0, tex1, nmap0, nmap1, smap, rmap;
+#endif
+};
+
+struct CUDAMaterial4
+{
+	uint4 baseData4;
+	uint4 parameters;
+	uint4 t0data4;
+	uint4 t1data4;
+	uint4 n0data4;
+	uint4 n1data4;
+	uint4 sdata4;
+	uint4 rdata4;
+	// flag query macros
+#define ISDIELECTRIC				(1 << 0)
+#define DIFFUSEMAPISHDR				(1 << 1)
+#define HASDIFFUSEMAP				(1 << 2)
+#define HASNORMALMAP				(1 << 3)
+#define HASSPECULARITYMAP			(1 << 4)
+#define HASROUGHNESSMAP				(1 << 5)
+#define ISANISOTROPIC				(1 << 6)
+#define HAS2NDNORMALMAP				(1 << 7)
+#define HAS2NDDIFFUSEMAP			(1 << 9)
+#define HASSMOOTHNORMALS			(1 << 11)
+#define HASALPHA					(1 << 12)
+#define MAT_ISDIELECTRIC			(flags & ISDIELECTRIC)
+#define MAT_DIFFUSEMAPISHDR			(flags & DIFFUSEMAPISHDR)
+#define MAT_HASDIFFUSEMAP			(flags & HASDIFFUSEMAP)
+#define MAT_HASNORMALMAP			(flags & HASNORMALMAP)
+#define MAT_HASSPECULARITYMAP		(flags & HASSPECULARITYMAP)
+#define MAT_HASROUGHNESSMAP			(flags & HASROUGHNESSMAP)
+#define MAT_ISANISOTROPIC			(flags & ISANISOTROPIC)
+#define MAT_HAS2NDNORMALMAP			(flags & HAS2NDNORMALMAP)
+#define MAT_HAS2NDDIFFUSEMAP		(flags & HAS2NDDIFFUSEMAP)
+#define MAT_HASSMOOTHNORMALS		(flags & HASSMOOTHNORMALS)
+#define MAT_HASALPHA				(flags & HASALPHA)
+};
+
 // ------------------------------------------------------------------------------
 // Below this line: derived, low-level and internal.
 
@@ -115,7 +151,6 @@ struct Intersection { float t; int triid, instid; float u, v; };
 #ifndef __CUDACC__
 
 #include "core_api_base.h"
-#include "core_api.h"
 #include "rendercore.h"
 
 // blue noise data, from https://eheitzresearch.wordpress.com/762-2

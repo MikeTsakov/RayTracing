@@ -83,7 +83,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 	// use skydome if we didn't hit any geometry
 	if (PRIMIDX == NOHIT)
 	{
-		float3 contribution = throughput * make_float3( SampleSkydome( D, pathLength ) ) * (1.0f / bsdfPdf);
+		float3 contribution = throughput * make_float3( SampleSkydome( -worldToSky.TransformVector( D ), pathLength ) ) * (1.0f / bsdfPdf);
 		CLAMPINTENSITY; // limit magnitude of thoughput vector to combat fireflies
 		FIXNAN_FLOAT3( contribution );
 		accumulator[pixelIdx] += make_float4( contribution, 0 );
@@ -196,7 +196,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 				CLAMPINTENSITY;
 				// add fire-and-forget shadow ray to the connections buffer
 				const uint shadowRayIdx = atomicAdd( &counters->shadowRays, 1 ); // compaction
-				connections[shadowRayIdx] = make_float4( SafeOrigin( I, L, N * faceDir, geometryEpsilon ), 0 ); // O4
+				connections[shadowRayIdx] = make_float4( SafeOrigin( I, L, N, geometryEpsilon ), 0 ); // O4
 				connections[shadowRayIdx + stride * 2] = make_float4( L, dist - 2 * geometryEpsilon ); // D4
 				connections[shadowRayIdx + stride * 2 * 2] = make_float4( contribution, __int_as_float( pixelIdx ) ); // E4
 			}
@@ -226,14 +226,14 @@ void shadeKernel( float4* accumulator, const uint stride,
 	if (specular) FLAGS |= S_SPECULAR;
 
 	// russian roulette (TODO: greatly increases variance.)
-	const float p = ((FLAGS & S_SPECULAR) || ((FLAGS & S_BOUNCED) == 0))  ? 1 : SurvivalProbability( bsdf );
+	const float p = ((FLAGS & S_SPECULAR) || ((FLAGS & S_BOUNCED) == 0)) ? 1 : SurvivalProbability( bsdf );
 	if (p < RandomFloat( seed )) return; else throughput *= 1 / p;
 
 	// write extension ray
 	const uint extensionRayIdx = atomicAdd( &counters->extensionRays, 1 ); // compact
 	const uint packedNormal = PackNormal( fN * faceDir );
 	if (!(FLAGS & S_SPECULAR)) FLAGS |= FLAGS & S_BOUNCED ? S_BOUNCEDTWICE : S_BOUNCED; else FLAGS |= S_VIASPECULAR;
-	pathStates[extensionRayIdx] = make_float4( SafeOrigin( I, R, N * faceDir, geometryEpsilon ), __uint_as_float( FLAGS ) );
+	pathStates[extensionRayIdx] = make_float4( SafeOrigin( I, R, N, geometryEpsilon ), __uint_as_float( FLAGS ) );
 	pathStates[extensionRayIdx + stride] = make_float4( R, __uint_as_float( packedNormal ) );
 	FIXNAN_FLOAT3( throughput );
 	pathStates[extensionRayIdx + stride * 2] = make_float4( throughput * bsdf * abs( dot( fN, R ) ), newBsdfPdf );

@@ -139,7 +139,7 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 	Timer timer;
 	timer.reset();
 	tinyobj::LoadObj( &attrib, &shapes, &materials, &err, &warn, fileName.c_str(), directory );
-	FATALERROR_IF( err.size() > 0, "tinyobj failed to load %s: %s", fileName.c_str(), err.c_str() );
+	FATALERROR_IF( err.size() > 0 || shapes.size() == 0, "tinyobj failed to load %s: %s", fileName.c_str(), err.c_str() );
 	printf( "loaded mesh in %5.3fs\n", timer.elapsed() );
 	// material offset: if we loaded an object before this one, material indices should not start at 0.
 	int matIdxOffset = (int)HostScene::materials.size();
@@ -171,26 +171,26 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 	for (uint s = (uint)shapes.size(), i = 0; i < s; i++)
 	{
 		vector<tinyobj::index_t>& indices = shapes[i].mesh.indices;
-		if (flatShaded) for (uint s = (uint)indices.size(), f = 0; f < s; f++ ) alphas[indices[f].normal_index] = 1; else 
-		for (uint s = (uint)indices.size(), f = 0; f < s; f += 3)
-		{
-			const int idx0 = indices[f + 0].vertex_index, nidx0 = indices[f + 0].normal_index;
-			const int idx1 = indices[f + 1].vertex_index, nidx1 = indices[f + 1].normal_index;
-			const int idx2 = indices[f + 2].vertex_index, nidx2 = indices[f + 2].normal_index;
-			const float3 vert0 = make_float3( attrib.vertices[idx0 * 3 + 0], attrib.vertices[idx0 * 3 + 1], attrib.vertices[idx0 * 3 + 2] );
-			const float3 vert1 = make_float3( attrib.vertices[idx1 * 3 + 0], attrib.vertices[idx1 * 3 + 1], attrib.vertices[idx1 * 3 + 2] );
-			const float3 vert2 = make_float3( attrib.vertices[idx2 * 3 + 0], attrib.vertices[idx2 * 3 + 1], attrib.vertices[idx2 * 3 + 2] );
-			float3 vN0 = make_float3( attrib.normals[nidx0 * 3 + 0], attrib.normals[nidx0 * 3 + 1], attrib.normals[nidx0 * 3 + 2] );
-			float3 vN1 = make_float3( attrib.normals[nidx1 * 3 + 0], attrib.normals[nidx1 * 3 + 1], attrib.normals[nidx1 * 3 + 2] );
-			float3 vN2 = make_float3( attrib.normals[nidx2 * 3 + 0], attrib.normals[nidx2 * 3 + 1], attrib.normals[nidx2 * 3 + 2] );
-			float3 N = normalize( cross( vert1 - vert0, vert2 - vert0 ) );
-			if (dot( N, vN0 ) < 0 && dot( N, vN1 ) < 0 && dot( N, vN2 ) < 0) N *= -1.0f; // flip if not consistent with vertex normals
-			// loop over vertices
-			// Note: we clamp at approx. 45 degree angles; beyond this the approach fails.
-			alphas[nidx0] = min( alphas[nidx0], max( 0.7f, dot( vN0, N ) ) );
-			alphas[nidx1] = min( alphas[nidx1], max( 0.7f, dot( vN1, N ) ) );
-			alphas[nidx2] = min( alphas[nidx2], max( 0.7f, dot( vN2, N ) ) );
-		}
+		if (flatShaded) for (uint s = (uint)indices.size(), f = 0; f < s; f++) alphas[indices[f].normal_index] = 1; else
+			for (uint s = (uint)indices.size(), f = 0; f < s; f += 3)
+			{
+				const int idx0 = indices[f + 0].vertex_index, nidx0 = indices[f + 0].normal_index;
+				const int idx1 = indices[f + 1].vertex_index, nidx1 = indices[f + 1].normal_index;
+				const int idx2 = indices[f + 2].vertex_index, nidx2 = indices[f + 2].normal_index;
+				const float3 vert0 = make_float3( attrib.vertices[idx0 * 3 + 0], attrib.vertices[idx0 * 3 + 1], attrib.vertices[idx0 * 3 + 2] );
+				const float3 vert1 = make_float3( attrib.vertices[idx1 * 3 + 0], attrib.vertices[idx1 * 3 + 1], attrib.vertices[idx1 * 3 + 2] );
+				const float3 vert2 = make_float3( attrib.vertices[idx2 * 3 + 0], attrib.vertices[idx2 * 3 + 1], attrib.vertices[idx2 * 3 + 2] );
+				const float3 vN0 = make_float3( attrib.normals[nidx0 * 3 + 0], attrib.normals[nidx0 * 3 + 1], attrib.normals[nidx0 * 3 + 2] );
+				const float3 vN1 = make_float3( attrib.normals[nidx1 * 3 + 0], attrib.normals[nidx1 * 3 + 1], attrib.normals[nidx1 * 3 + 2] );
+				const float3 vN2 = make_float3( attrib.normals[nidx2 * 3 + 0], attrib.normals[nidx2 * 3 + 1], attrib.normals[nidx2 * 3 + 2] );
+				float3 N = normalize( cross( vert1 - vert0, vert2 - vert0 ) );
+				if (dot( N, vN0 ) < 0 && dot( N, vN1 ) < 0 && dot( N, vN2 ) < 0) N *= -1.0f; // flip if not consistent with vertex normals
+				// loop over vertices
+				// Note: we clamp at approx. 45 degree angles; beyond this the approach fails.
+				alphas[nidx0] = min( alphas[nidx0], max( 0.7f, dot( vN0, N ) ) );
+				alphas[nidx1] = min( alphas[nidx1], max( 0.7f, dot( vN1, N ) ) );
+				alphas[nidx2] = min( alphas[nidx2], max( 0.7f, dot( vN2, N ) ) );
+			}
 	}
 	// finalize alpha values based on max dots
 	const float w = 0.03632f;
@@ -290,7 +290,7 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 			tri.alpha = make_float3( alphas[nidx0], tri.alpha.y = alphas[nidx1], tri.alpha.z = alphas[nidx2] );
 			// calculate triangle LOD data
 			HostMaterial* mat = HostScene::materials[tri.material];
-			int textureID = mat->map[TEXTURE0].textureID;
+			int textureID = mat->color.textureID;
 			if (textureID > -1)
 			{
 				HostTexture* texture = HostScene::textures[textureID];
@@ -547,7 +547,16 @@ void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector
 			float2 uv02 = make_float2( tri.u2 - tri.u0, tri.v2 - tri.v0 );
 			if (dot( uv01, uv01 ) == 0 || dot( uv02, uv02 ) == 0)
 			{
+			#if 1
+				// PBRT:
+				// https://github.com/mmp/pbrt-v3/blob/3f94503ae1777cd6d67a7788e06d67224a525ff4/src/shapes/triangle.cpp#L381
+				if ( std::abs( N.x ) > std::abs( N.y ) )
+					tri.T = make_float3( -N.z, 0, N.x ) / std::sqrt( N.x * N.x + N.z * N.z );
+				else
+					tri.T = make_float3( 0, N.z, -N.y ) / std::sqrt( N.y * N.y + N.z * N.z );
+			#else
 				tri.T = normalize( tri.vertex1 - tri.vertex0 );
+			#endif
 				tri.B = normalize( cross( N, tri.T ) );
 			}
 			else
@@ -688,16 +697,21 @@ void HostMesh::SetPose( const HostSkin* skin )
 	}
 #if 1
 	// code optimized for INFOMOV by Alysha Bogaers and Naraenda Prasetya
-#define USE_PARALLEL_SETPOSE 1
-	// adjust full triangles
-#if USE_PARALLEL_SETPOSE == 1
-#if 0
+
+#if defined( __AVX2__ ) && ( defined( _MSC_VER ) || defined( __FMA__ ) )
 	// use avx2 instruction
 #define FMADD256(a,b,c) _mm256_fmadd_ps( (a),(b),(c) )
 #else
 	// avx fallback (negligible impact on performance)
 #define FMADD256(a,b,c) _mm256_add_ps( _mm256_mul_ps( (a), (b) ), (c) )
 #endif
+
+#ifdef _MSC_VER
+#define USE_PARALLEL_SETPOSE // TODO: Find Linux replacement for PPL
+#endif
+
+	// adjust full triangles
+#ifdef USE_PARALLEL_SETPOSE
 	concurrency::parallel_for<int>( 0, (int)triangles.size(), [&]( int t ) {
 	#else
 	for (int s = (int)triangles.size(), t = 0; t < s; t++)
@@ -797,11 +811,11 @@ void HostMesh::SetPose( const HostSkin* skin )
 		_mm_store_ps( &triangles[t].vN1.x, tri_nrm[1] );
 		// store to [vN1 (float3), Nz (float)]
 		_mm_store_ps( &triangles[t].vN2.x, tri_nrm[2] );
-	#if USE_PARALLEL_SETPOSE == 1
-	} );
-#else
 	}
+#ifdef USE_PARALLEL_SETPOSE
+	);
 #endif
+
 #else
 	// transform original into vertex vector using skin matrices
 	for (int s = (int)vertices.size(), i = 0; i < s; i++)

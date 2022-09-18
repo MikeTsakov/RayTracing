@@ -19,21 +19,11 @@
 
 enum { NOT_ALLOCATED = 0, ON_HOST = 1, ON_DEVICE = 2 };
 
-#define CHK_CUDA( stmt )                                                                                         \
-	do                                                                                                           \
-	{                                                                                                            \
-		auto ret = ( stmt );                                                                                     \
-		if ( ret )                                                                                               \
-		{                                                                                                        \
-			if ( !strncmp( #stmt, "cudaGraphicsGLRegisterImage", sizeof( "cudaGraphicsGLRegisterImage" ) - 1 ) ) \
-				FATALERROR_IN( #stmt, CUDATools::decodeError( ret ),                                             \
-							   "\n\t(Are you running using the IGP?\n"                                           \
-							   "Use NVIDIA control panel to enable the high performance GPU.)" )                 \
-			else                                                                                                 \
-				FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "" )                                        \
-		}                                                                                                        \
-	} while ( 0 )
-
+#define CHK_CUDA( stmt ) do { auto ret = ( stmt ); if ( ret ) {                                      \
+if ( !strncmp( #stmt, "cudaGraphicsGLRegisterImage", sizeof( "cudaGraphicsGLRegisterImage" ) - 1 ) ) \
+FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "\n\t(Are you running using the IGP?\n"         \
+"Use NVIDIA control panel to enable the high performance GPU.)" ) else                               \
+FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "" ) } } while ( 0 )
 #define CHK_NVRTC( stmt ) FATALERROR_IN_CALL( ( stmt ), nvrtcGetErrorString, "" )
 
 class CUDATools
@@ -65,7 +55,7 @@ public:
 		uint64_t max_perf = 0;
 		cudaDeviceProp deviceProp;
 		cudaGetDeviceCount( &count );
-		if (count == 0) exit( EXIT_FAILURE );
+		if (count == 0) FatalError( "No CUDA devices." );
 		while (curdev < count)
 		{
 			cudaGetDeviceProperties( &deviceProp, curdev );
@@ -83,13 +73,8 @@ public:
 			else prohibited++;
 			++curdev;
 		}
-		if (prohibited == count) exit( EXIT_FAILURE );
+		if (prohibited == count) FatalError( "All CUDA devices are prohibited from use." );
 		return fastest;
-	}
-	static void fail( const char* t )
-	{
-		printf( t );
-		while (1) exit( 0 );
 	}
 	static const char* decodeError( cudaError_t res )
 	{
@@ -150,7 +135,7 @@ public:
 		CHK_NVRTC( nvrtcCreateProgram( &prog, cuSource, 0, 0, NULL, NULL ) );
 		// gather NVRTC options
 		vector<const char*> options;
-	#if 0
+	#if 1
 		// @Marijn: this doesn't work. Optix is used in several versions, distributed with LH2.
 		// TODO: Throw FatalError if no path is defined for the requested OptiX version!
 		if (optixVer > 6)
@@ -158,7 +143,7 @@ public:
 		#ifdef OPTIX_INCLUDE_PATH
 			options.push_back( "-I" OPTIX_INCLUDE_PATH );
 		#else
-			FATALERROR( "No include path defined for OptiX %d!", optixVer );
+			options.push_back( "-I../../lib/OptiX7/include" );
 		#endif
 		}
 		else
@@ -166,7 +151,7 @@ public:
 		#ifdef OPTIX_6_INCLUDE_PATH
 			options.push_back( "-I" OPTIX_6_INCLUDE_PATH );
 		#else
-			FATALERROR( "No include path defined for OptiX %d!", optixVer );
+			options.push_back( "-I../../lib/OptiX/include" );
 		#endif
 		}
 	#else

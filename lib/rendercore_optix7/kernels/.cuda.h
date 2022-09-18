@@ -14,11 +14,16 @@
 */
 
 // generic includes
-#include <stdio.h>
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 
 // custom types
 typedef unsigned int uint;
 typedef unsigned char uchar;
+
+// function defintion helper
+#define LH2_DEVFUNC	static __forceinline__ __device__
 
 // platform specific
 #include "../CUDA/helper_math.h"
@@ -27,9 +32,11 @@ typedef unsigned char uchar;
 #else
 #include "half.hpp"
 #endif
+#include "../RenderSystem/common_settings.h"
+#include "../RenderSystem/common_classes.h"
+#include "../RenderSystem/common_functions.h"
+#include "../RenderSystem/common_types.h"
 #include "../core_settings.h"
-#include "common_settings.h"
-#include "common_classes.h"
 #if __CUDA_ARCH__ >= 700
 #define THREADMASK	__activemask() // volta, turing
 #else
@@ -47,11 +54,9 @@ typedef unsigned char uchar;
 
 // final pixel buffer for output
 surface<void, cudaSurfaceType2D> renderTarget;
-namespace lh2core {
+namespace lh2core
+{
 __host__ const surfaceReference* renderTargetRef() { const surfaceReference* s; cudaGetSurfaceReference( &s, &renderTarget ); return s; }
 } // namespace lh2core
-
-// function defintion helper
-#define LH2_DEVFUNC	static __forceinline__ __device__
 
 // EOF

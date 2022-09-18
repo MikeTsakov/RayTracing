@@ -15,6 +15,7 @@ namespace lh2core
 		}
 		bool intersects;
 		float3 intersection;
+		uint lightIdx = -1;
 		CoreTri* triangle;
 		float3 hitNormal;
 		float2 uv;

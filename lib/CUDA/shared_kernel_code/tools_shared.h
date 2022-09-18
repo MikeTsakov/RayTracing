@@ -182,11 +182,21 @@ LH2_DEVFUNC float3 RGB32toHDRmin1( const uint c )
 		(float)max( 1u, c & 2047 ) * (1.0f / 2047.0f) );
 }
 
+LH2_DEVFUNC float SphericalTheta( const float3& v )
+{
+	return std::acos( clamp( v.z, -1.f, 1.f ) );
+}
+
+LH2_DEVFUNC float SphericalPhi( const float3& v )
+{
+	const float p = std::atan2( v.y, v.x );
+	return (p < 0) ? (p + 2 * PI) : p;
+}
+
 LH2_DEVFUNC float4 SampleSkydome( const float3 D, const int pathLength )
 {
-	// formulas by Paul Debevec, http://www.pauldebevec.com/Probes
-	uint u = (uint)(skywidth * 0.5f * (1.0f + atan2( D.x, -D.z ) * INVPI));
-	uint v = (uint)(skyheight * acos( D.y ) * INVPI);
+	uint u = (uint)(skywidth * SphericalPhi( D ) * INV2PI - 0.5f),
+		v = (uint)(skyheight * SphericalTheta( D ) * INVPI - 0.5f);
 	uint idx = u + v * skywidth;
 	return idx < skywidth * skyheight ? make_float4( skyPixels[idx], 1.0f ) : make_float4( 0 );
 }
@@ -208,80 +218,25 @@ LH2_DEVFUNC float FresnelDielectricExact( const float3& wo, const float3& N, flo
 	return 0.5f * (Rs * Rs + Rp * Rp);
 }
 
-LH2_DEVFUNC float3 Tangent2World( const float3& V, const float3& N )
-{
-	// "Building an Orthonormal Basis, Revisited"
-	float sign = copysignf( 1.0f, N.z );
-	const float a = -1.0f / (sign + N.z);
-	const float b = N.x * N.y * a;
-	const float3 B = make_float3( 1.0f + sign * N.x * N.x * a, sign * b, -sign * N.x );
-	const float3 T = make_float3( b, sign + N.y * N.y * a, -N.y );
-	return V.x * T + V.y * B + V.z * N;
-}
-
-LH2_DEVFUNC float3 Tangent2World( const float3& V, const float3& N,  const float3& T, const float3& B )
-{
-	return V.x * T + V.y * B + V.z * N;
-}
-
-LH2_DEVFUNC float3 World2Tangent( const float3& V, const float3& N )
-{
-	float sign = copysignf( 1.0f, N.z );
-	const float a = -1.0f / (sign + N.z);
-	const float b = N.x * N.y * a;
-	const float3 B = make_float3( 1.0f + sign * N.x * N.x * a, sign * b, -sign * N.x );
-	const float3 T = make_float3( b, sign + N.y * N.y * a, -N.y );
-	return make_float3( dot( V, T ), dot( V, B ), dot( V, N ) );
-}
-
-LH2_DEVFUNC float3 World2Tangent( const float3& V, const float3& N, const float3& T, const float3& B )
-{
-	return make_float3( dot( V, T ), dot( V, B ), dot( V, N ) );
-}
-
-LH2_DEVFUNC float3 DiffuseReflectionUniform( const float r0, const float r1 )
-{
-	const float term1 = TWOPI * r0, term2 = sqrtf( 1 - r1 * r1 );
-	float s, c;
-	__sincosf( term1, &s, &c );
-	return make_float3( c * term2, s * term2, r1 );
-}
-
-LH2_DEVFUNC float3 DiffuseReflectionCosWeighted( const float r0, const float r1 )
-{
-	const float term1 = TWOPI * r0, term2 = sqrtf( 1 - r1 );
-	float s, c;
-	__sincosf( term1, &s, &c );
-	return make_float3( c * term2, s * term2, sqrtf( r1 ) );
-}
-
-LH2_DEVFUNC float3 UniformSampleSphere( const float r0, const float r1 )
-{
-	const float z = 1.0f - 2.0f * r1; // [-1~1]
-	const float term1 = TWOPI * r0, term2 = sqrtf( 1 - z * z );
-	float s, c;
-	__sincosf( term1, &s, &c );
-	return make_float3( c * term2, s * term2, z );
-}
-
-LH2_DEVFUNC float3 UniformSampleCone( const float r0, const float r1, const float cos_outer )
-{
-	float cosTheta = 1.0f - r1 + r1 * cos_outer;
-	float term2 = sqrtf( 1 - cosTheta * cosTheta );
-	const float term1 = TWOPI * r0;
-	float s, c;
-	__sincosf( term1, &s, &c );
-	return make_float3( c * term2, s * term2, cosTheta );
-}
-
 // origin offset
-
 LH2_DEVFUNC float3 SafeOrigin( const float3& O, const float3& R, const float3& N, const float geoEpsilon )
 {
+#if 1
+	// from Ray Tracing Gems 1, chapter 6: does not use geoEpsilon nor ray direction.
+	const float3 _N = dot( N, R ) > 0 ? N : (-N);
+	int3 of_i = make_int3( 256.0f * _N.x, 256.0f * _N.y, 256.0f * _N.z );
+	float3 p_i = make_float3(
+		__int_as_float( __float_as_int( O.x ) + ((O.x < 0) ? -of_i.x : of_i.x) ),
+		__int_as_float( __float_as_int( O.y ) + ((O.y < 0) ? -of_i.y : of_i.y) ),
+		__int_as_float( __float_as_int( O.z ) + ((O.z < 0) ? -of_i.z : of_i.z) ) );
+	return make_float3( fabsf( O.x ) < (1.0f / 32.0f) ? O.x + (1.0f / 65536.0f) * _N.x : p_i.x,
+		fabsf( O.y ) < (1.0f / 32.0f) ? O.y + (1.0f / 65536.0f) * _N.y : p_i.y,
+		fabsf( O.z ) < (1.0f / 32.0f) ? O.z + (1.0f / 65536.0f) * _N.z : p_i.z );
+#else
 	// offset outgoing ray direction along R and / or N: along N when strongly parallel to the origin surface; mostly along R otherwise
 	const float parallel = 1 - fabs( dot( N, R ) );
 	const float v = parallel * parallel;
-#if 0
+#if 1
 	// we can go slightly into the surface when iN != N; negate the offset along N in that case
 	const float side = dot( N, R ) < 0 ? -1 : 1;
 #else
@@ -289,6 +244,7 @@ LH2_DEVFUNC float3 SafeOrigin( const float3& O, const float3& R, const float3& N
 	const float side = 1.0f;
 #endif
 	return O + R * geoEpsilon * (1 - v) + N * side * geoEpsilon * v;
+#endif
 }
 
 // consistent normal interpolation
