@@ -24,7 +24,6 @@
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>rendercorevulkanrt</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>RenderCore_Vulkan_RT</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -93,7 +92,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>COREDLL_EXPORTS;WIN32;WIN64;_DEBUG;RENDERCOREVULKANRT_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>../vulkan/include;%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.2.0;../tinyobjloader;../platform;../RenderSystem;../taskflow</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../vulkan/include;%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../platform;../RenderSystem</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
@@ -118,7 +117,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>COREDLL_EXPORTS;WIN32;WIN64;WIN32;_DEBUG;RENDERCOREVULKANRT_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>../vulkan/include;%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.2.0;../tinyobjloader;../platform;../RenderSystem</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../vulkan/include;%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../platform;../RenderSystem</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -168,7 +167,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;COREDLL_EXPORTS;WIN32;WIN64;NDEBUG;RENDERCOREVULKANRT_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>../vulkan/include;%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.2.0;../tinyobjloader;../platform;../RenderSystem;../taskflow</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../vulkan/include;%(AdditionalIncludeDirectories);../freeimage/inc;../zlib;../glfw/include;../glad/include;../half2.1.0;../tinyobjloader;../platform;../RenderSystem</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
@@ -182,7 +181,7 @@
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
       <AdditionalLibraryDirectories>../vulkan/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;VkLayer_utils.lib;shaderc_shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
@@ -193,6 +192,7 @@
   <ItemGroup>
     <ClInclude Include="bindings.h" />
     <ClInclude Include="bottom_level_as.h" />
+    <ClInclude Include="core_api.h" />
     <ClInclude Include="core_mesh.h" />
     <ClInclude Include="core_settings.h" />
     <ClInclude Include="rendercore.h" />
@@ -241,11 +241,6 @@
     <None Include="shaders\sampling.glsl" />
     <None Include="shaders\structures.glsl" />
     <None Include="shaders\tools.glsl" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\platform\platform.vcxproj">
-      <Project>{7940afae-a1f7-440c-823c-239f2c3bb023}</Project>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

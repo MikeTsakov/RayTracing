@@ -1,4 +1,4 @@
-/* core_mesh.cpp - Copyright 2019/2021 Utrecht University
+/* core_mesh.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,6 +14,25 @@
 */
 
 #include "core_settings.h"
+
+RenderCore* CoreMesh::renderCore = 0;
+
+static bool ConsistentExponents( const float4& ref, const float4& A, const float4& B )
+{
+	// retur true if the float3's stored in A and B have the same signs and exponents
+	// (on a per-component basis) as the reference float3 stored in ref
+	const uint& expRx = reinterpret_cast<const uint&>(ref.x) >> 23;
+	const uint& expRy = reinterpret_cast<const uint&>(ref.y) >> 23;
+	const uint& expRz = reinterpret_cast<const uint&>(ref.z) >> 23;
+	const uint& expAx = reinterpret_cast<const uint&>(A.x) >> 23;
+	const uint& expAy = reinterpret_cast<const uint&>(A.y) >> 23;
+	const uint& expAz = reinterpret_cast<const uint&>(A.z) >> 23;
+	const uint& expBx = reinterpret_cast<const uint&>(B.x) >> 23;
+	const uint& expBy = reinterpret_cast<const uint&>(B.y) >> 23;
+	const uint& expBz = reinterpret_cast<const uint&>(B.z) >> 23;
+	const bool same = (expAx == expRx) & (expAy == expRy) & (expAz == expRz) & (expBx == expRx) & (expBy == expRy) & (expBz == expRz);
+	return same;
+}
 
 //  +-----------------------------------------------------------------------------+
 //  |  CoreMesh::~CoreMesh                                                        |
@@ -31,7 +50,7 @@ CoreMesh::~CoreMesh()
 //  |  CoreMesh::SetGeometry                                                      |
 //  |  Set the geometry data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-void CoreMesh::SetGeometry( const float4* vertexData, const int vertexCount, const int triCount, const CoreTri* tris )
+void CoreMesh::SetGeometry( const float4* vertexData, const int vertexCount, const int triCount, const CoreTri* tris, const uint* alphaFlags )
 {
 	// copy triangle data to GPU
 	bool reallocate = (triangles == 0);
@@ -58,21 +77,10 @@ void CoreMesh::SetGeometry( const float4* vertexData, const int vertexCount, con
 	// copy new vertex positions and normals
 	for (int i = 0; i < vertexCount; i++) vertex3Data[i] = make_float3( vertexData[i] );
 	triangles->SetHostData( (CoreTri4*)tris );
-	triangles->StageCopyToDevice();
-	// mark this mesh: BVH rebuild needed
-	accstrucNeedsUpdate = true;
-	UpdateAccstruc(); // for now
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  CoreMesh::UpdateAccstruc                                                   |
-//  |  Update the BVH.                                                      LH2'20|
-//  +-----------------------------------------------------------------------------+
-void CoreMesh::UpdateAccstruc()
-{
+	triangles->CopyToDevice();
+	// update accstruc
 	CHK_PRIME( rtpModelSetTriangles( model, indicesDesc, verticesDesc ) );
 	CHK_PRIME( rtpModelUpdate( model, RTP_MODEL_HINT_NONE /* blocking; try RTP_MODEL_HINT_ASYNC + rtpModelFinish for async version. */ ) );
-	accstrucNeedsUpdate = false;
 }
 
 // EOF

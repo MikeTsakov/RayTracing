@@ -1,4 +1,4 @@
-/* host_light.cpp - Copyright 2019/2021 Utrecht University
+/* host_light.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
 #include "rendersystem.h"
 
 //  +-----------------------------------------------------------------------------+
-//  |  HostTriLight::HostTriLight                                                 |
-//  |  Constructor. A 'tri light' is just a regular triangle in LH2, but we do    |
+//  |  HostAreaLight::HostAreaLight                                               |
+//  |  Constructor. An area light is just a regular triangle in LH2, but we do    |
 //  |  store some additional data:                                                |
 //  |  - For efficient sampling, we store the vertices, normal and radiace;       |
-//  |  - For MIS, we store the original triangle (idx and instance idx).    LH2'20|
+//  |  - For MIS, we store the original triangle (idx and instance idx).    LH2'19|
 //  +-----------------------------------------------------------------------------+
-HostTriLight::HostTriLight( HostTri* origTri, int origIdx, int origInstance )
+HostAreaLight::HostAreaLight( HostTri* origTri, int origIdx, int origInstance )
 {
 	triIdx = origIdx;
 	instIdx = origInstance;
@@ -36,16 +36,16 @@ HostTriLight::HostTriLight( HostTri* origTri, int origIdx, int origInstance )
 	const float c = length( vertex0 - vertex2 );
 	const float s = (a + b + c) * 0.5f;
 	area = sqrtf( s * (s - a) * (s - b) * (s - c) ); // Heron's formula
-	radiance = HostScene::materials[origTri->material]->color();
+	radiance = HostScene::materials[origTri->material]->color;
 	const float3 E = radiance * area;
 	energy = E.x + E.y + E.z;
 }
 
 //  +-----------------------------------------------------------------------------+
-//  |  HostTriLight::ConvertToCoreLightTri                                        |
-//  |  Prepare a triangle area light for the core.                          LH2'19|
+//  |  HostAreaLight::ConvertToCoreLightTri                                       |
+//  |  Prepare an area light for the core.                                  LH2'19|
 //  +-----------------------------------------------------------------------------+
-CoreLightTri HostTriLight::ConvertToCoreLightTri()
+CoreLightTri HostAreaLight::ConvertToCoreLightTri()
 {
 	CoreLightTri light;
 	light.triIdx = triIdx;
@@ -70,7 +70,7 @@ CorePointLight HostPointLight::ConvertToCorePointLight()
 	CorePointLight light;
 	light.position = position;
 	light.radiance = radiance;
-	light.energy = radiance.x + radiance.y + radiance.z;
+	light.energy = energy;
 	return light;
 }
 
@@ -97,7 +97,6 @@ CoreDirectionalLight HostDirectionalLight::ConvertToCoreDirectionalLight()
 {
 	CoreDirectionalLight light;
 	light.radiance = radiance;
-	light.energy = radiance.x + radiance.y + radiance.z;
 	light.direction = direction;
 	return light;
 }

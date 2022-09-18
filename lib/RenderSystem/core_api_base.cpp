@@ -1,4 +1,4 @@
-/* core_api_base.cpp - Copyright 2019/2021 Utrecht University
+/* core_api_base.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -123,6 +123,8 @@ CoreAPI_Base* CoreAPI_Base::CreateCoreAPI( const char* coreName )
 		module = LoadModule( coreName );
 		createCore = (createCoreFunction)GetSymbol( module, "CreateCore" );
 		FATALERROR_IF( !createCore, "Could not find CreateCore in library" );
+		destroyCore = (destroyCoreFunction)GetSymbol( module, "DestroyCore" );
+		FATALERROR_IF( !createCore, "Could not find DestroyCore in library" );
 		api = createCore();
 		api->Init();
 	}

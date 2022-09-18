@@ -1,4 +1,4 @@
-/* rendercore.h - Copyright 2019/2021 Utrecht University
+/* rendercore.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -18,12 +18,17 @@
 namespace lh2core
 {
 
-#define CHK_PRIME( stmt ) { RTPresult r = ( stmt ); if ( r ) { const char* e;  \
-rtpContextGetLastErrorString( RenderCore::context, &e );                       \
-FatalError( #stmt " returned error '%s' at %s:%d\n", e, __FILE__, __LINE__ );  \
-} } while ( 0 )
-
-class RenderThread;
+#define CHK_PRIME( stmt )                                                                 \
+	{                                                                                     \
+		RTPresult r = ( stmt );                                                           \
+		if ( r )                                                                          \
+		{                                                                                 \
+			const char* e;                                                                \
+			rtpContextGetLastErrorString( RenderCore::context, &e );                      \
+			FatalError( #stmt " returned error '%s' at %s:%d\n", e, __FILE__, __LINE__ ); \
+		}                                                                                 \
+	}                                                                                     \
+	while ( 0 )
 
 //  +-----------------------------------------------------------------------------+
 //  |  DeviceVars                                                                 |
@@ -40,55 +45,39 @@ struct DeviceVars
 //  |  RenderCore                                                                 |
 //  |  Encapsulates device code.                                            LH2'19|
 //  +-----------------------------------------------------------------------------+
-class RenderCore : public CoreAPI_Base
+class RenderCore
 {
-	friend class RenderThread;
 public:
 	// methods
 	void Init();
-	void Render( const ViewPyramid& view, const Convergence converge, bool async );
-	void WaitForRender();
+	void Render( const ViewPyramid& view, const Convergence converge );
 	void Setting( const char* name, const float value );
 	void SetTarget( GLTexture* target, const uint spp );
 	void Shutdown();
+	void KeyDown( const uint key ) {}
+	void KeyUp( const uint key ) {}
 	// passing data. Note: RenderCore always copies what it needs; the passed data thus remains the
 	// property of the caller, and can be safely deleted or modified as soon as these calls return.
 	void SetTextures( const CoreTexDesc* tex, const int textureCount );
-	void SetMaterials( CoreMaterial* mat, const int materialCount ); // textures must be in sync when calling this
-	void SetLights( const CoreLightTri* triLights, const int triLightCount,
+	void SetMaterials( CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount ); // textures must be in sync when calling this
+	void SetLights( const CoreLightTri* areaLights, const int areaLightCount,
 		const CorePointLight* pointLights, const int pointLightCount,
 		const CoreSpotLight* spotLights, const int spotLightCount,
 		const CoreDirectionalLight* directionalLights, const int directionalLightCount );
-	void SetSkyData( const float3* pixels, const uint width, const uint height, const mat4& worldToLight );
+	void SetSkyData( const float3* pixels, const uint width, const uint height );
 	// geometry and instances:
 	// a scene is setup by first passing a number of meshes (geometry), then a number of instances.
 	// note that stored meshes can be used zero, one or multiple times in the scene.
 	// also note that, when using alpha flags, materials must be in sync.
-	void SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles );
+	void SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles, const uint* alphaFlags = 0 );
 	void SetInstance( const int instanceIdx, const int modelIdx, const mat4& transform );
-	void FinalizeInstances();
-	int4 GetScreenParams();
-	void SetProbePos( const int2 pos ) { probePos = pos; }
-	CoreStats GetCoreStats() const override;
-	// internal methods
-protected:
-	void RenderImpl( const ViewPyramid& view );
-	void FinalizeRender();
-private:
-	template <class T> T* StagedBufferResize( CoreBuffer<T>*& buffer, const int newCount, const T* sourceData );
-	float TraceShadowRays( const int rayCount );
-	float TraceExtensionRays( const int rayCount );
 	void UpdateToplevel();
+	int4 GetScreenParams();
+	void SetProbePos( const int2 pos );
+	CoreMaterial& GetCoreMaterial( int materialIdx ) { return materialBuffer->HostPtr()[materialIdx]; }
+	// internal methods
+private:
 	void SyncStorageType( const TexelStorage storage );
-	// helpers
-	template <class T> CUDAMaterial::Map Map( T v )
-	{
-		CUDAMaterial::Map m;
-		CoreTexDesc& t = texDescs[v.textureID];
-		m.width = t.width, m.height = t.height, m.uscale = v.uvscale.x, m.vscale = v.uvscale.y;
-		m.uoffs = v.uvoffset.x, m.voffs = v.uvoffset.y, m.addr = t.firstPixel;
-		return m;
-	}
 	// data members
 	int scrwidth = 0, scrheight = 0;				// current screen width and height
 	int scrspp = 1;									// samples to be taken per screen pixel
@@ -100,17 +89,16 @@ private:
 	vector<CoreInstance*> instances;					// list of instances: model id plus transform
 	bool instancesDirty = true;						// we need to sync the instance array to the device
 	InteropTexture renderTarget;					// CUDA will render to this texture
-	CoreBuffer<CUDAMaterial>* materialBuffer = 0;	// material array
-	CUDAMaterial* hostMaterialBuffer = 0;			// core-managed copy of the materials
-	CoreBuffer<CoreLightTri>* triLightBuffer;		// tri lights
+	CoreBuffer<CoreMaterial>* materialBuffer = 0;	// material array
+	CoreMaterial* hostMaterialBuffer = 0;			// core-managed host-side copy of the materials for alpha tris
+	CoreBuffer<CoreLightTri>* areaLightBuffer;		// area lights
 	CoreBuffer<CorePointLight>* pointLightBuffer;	// point lights
 	CoreBuffer<CoreSpotLight>* spotLightBuffer;		// spot lights
 	CoreBuffer<CoreDirectionalLight>* directionalLightBuffer;	// directional lights
 	CoreBuffer<float4>* texel128Buffer = 0;			// texel buffer 1: hdr ARGB128 texture data
 	CoreBuffer<uint>* normal32Buffer = 0;			// texel buffer 2: integer-encoded normals
-	CoreBuffer<float4>* skyPixelBuffer = 0;			// skydome texture data
+	CoreBuffer<float3>* skyPixelBuffer = 0;			// skydome texture data
 	RTPmodel* topLevel = 0;							// the top-level node; combines all instances and is the entry point for ray queries
-	RTPquery shadowQuery, extendQuery;				// queries for shadow rays and extension rays
 	CoreBuffer<float4>* accumulator = 0;			// accumulator buffer for the path tracer
 	CoreBuffer<Counters>* counterBuffer = 0;		// counters for persistent threads
 	CoreBuffer<CoreInstanceDesc>* instDescBuffer = 0; // instance descriptor array
@@ -132,14 +120,9 @@ private:
 	int samplesTaken = 0;							// number of accumulated samples in accumulator
 	int inBuffer = 0, outBuffer = 1;				// extension ray buffers are double buffered
 	uint camRNGseed = 0x12345678;					// seed for the RNG that feeds the renderer
-	uint shiftSeed = 0x11331445;					// seed for the RNG that feeds the blue noise shift
-	float noiseShift = 0;							// used to cycle blue noise values
+	uint seed = 0x23456789;							// generic seed
 	DeviceVars vars;								// copy of device-side variables, to detect changes
 	bool firstConvergingFrame = false;				// to reset accumulator for first converging frame
-	bool asyncRenderInProgress = false;				// to prevent deadlock in WaitForRender
-	bool gpuHasSceneData = false;					// to block renders before first SynchronizeSceneData
-	bool noDirectLightsInScene = true;				// no lights specified; don't do NEE in pathtracer
-	Timer renderTimer;								// timer for asynchronous rendering
 	// blue noise table: contains the three tables distributed by Heitz.
 	// Offset 0: an Owen-scrambled Sobol sequence of 256 samples of 256 dimensions.
 	// Offset 65536: scrambling tile of 128x128 pixels; 128 * 128 * 8 values.
@@ -147,35 +130,9 @@ private:
 	CoreBuffer<uint>* blueNoise = 0;
 	// timing
 	cudaEvent_t shadeStart[MAXPATHLENGTH], shadeEnd[MAXPATHLENGTH];	// events for timing CUDA code
-protected:
-	// events
-	HANDLE startEvent, doneEvent;
-	// worker thread
-	RenderThread* renderThread;
 public:
 	static RTPcontext context;						// the OptiX prime context
 	CoreStats coreStats;							// rendering statistics
-};
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderThread                                                               |
-//  |  Worker thread for asynchronous rendering.                            LH2'20|
-//  +-----------------------------------------------------------------------------+
-class RenderThread : public WinThread
-{
-public:
-	void Init( RenderCore* core )
-	{
-		coreState = *core;
-	}
-	void Init( RenderCore* core, const ViewPyramid& pyramid )
-	{
-		coreState = *core;
-		view = pyramid;
-	}
-	void run();
-	RenderCore coreState; // frozen copy of the state at render start
-	ViewPyramid view;
 };
 
 } // namespace lh2core

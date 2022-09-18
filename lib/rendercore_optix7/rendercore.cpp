@@ -1,4 +1,4 @@
-﻿/* rendercore.cpp - Copyright 2019/2021 Utrecht University
+﻿/* rendercore.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,28 +17,48 @@
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 
-namespace lh2core
-{
+namespace lh2core {
 
 // forward declaration of cuda code
 const surfaceReference* renderTargetRef();
+void finalizeRender( const float4* accumulator, const int w, const int h, const int spp );
+void shade( const int pathCount, float4* accumulator, const uint stride,
+	float4* pathStates, const float4* hits, float4* connections,
+	const uint R0, const uint* blueNoise, const int pass,
+	const int probePixelIdx, const int pathLength, const int w, const int h, const float spreadAngle,
+	const float3 p1, const float3 p2, const float3 p3, const float3 pos );
 void InitCountersForExtend( int pathCount );
 void InitCountersSubsequent();
-void shade( const int pathCount, float4* accumulator, const uint stride,
-	float4* pathStates, float4* hits, float4* connections,
-	const uint R0, const uint shift, const uint* blueNoise, const int pass,
-	const int probePixelIdx, const int pathLength, const int w, const int h, const float spreadAngle );
-void finalizeRender( const float4* accumulator, const int w, const int h, const int spp );
+
+// setters / getters
+void SetInstanceDescriptors( CoreInstanceDesc* p );
+void SetMaterialList( CoreMaterial* p );
+void SetAreaLights( CoreLightTri* p );
+void SetPointLights( CorePointLight* p );
+void SetSpotLights( CoreSpotLight* p );
+void SetDirectionalLights( CoreDirectionalLight* p );
+void SetLightCounts( int area, int point, int spot, int directional );
+void SetARGB32Pixels( uint* p );
+void SetARGB128Pixels( float4* p );
+void SetNRM32Pixels( uint* p );
+void SetSkyPixels( float3* p );
+void SetSkySize( int w, int h );
+void SetPathStates( PathState* p );
+void SetDebugData( float4* p );
+void SetGeometryEpsilon( float e );
+void SetClampValue( float c );
+void SetCounters( Counters* p );
 
 } // namespace lh2core
 
 using namespace lh2core;
 
+OptixDeviceContext RenderCore::optixContext = 0;
 struct SBTRecord { __align__( OPTIX_SBT_RECORD_ALIGNMENT ) char header[OPTIX_SBT_RECORD_HEADER_SIZE]; };
 
-const char* ParseOptixError( OptixResult r )
+const char *ParseOptixError( OptixResult r )
 {
-	switch (r)
+	switch ( r )
 	{
 	case OPTIX_SUCCESS: return "NO ERROR";
 	case OPTIX_ERROR_INVALID_VALUE: return "OPTIX_ERROR_INVALID_VALUE";
@@ -105,12 +125,7 @@ void RenderCore::CreateOptixContext( int cc )
 	contextOptions.logCallbackFunction = &context_log_cb;
 	contextOptions.logCallbackLevel = 4;
 	CHK_OPTIX( optixDeviceContextCreate( cu_ctx, &contextOptions, &optixContext ) );
-	cudaMalloc( (void**)(&d_params[0]), sizeof( Params ) );
-	cudaMalloc( (void**)(&d_params[1]), sizeof( Params ) );
-	cudaMalloc( (void**)(&d_params[2]), sizeof( Params ) );
-	// Note: we set up three sets of params, with the only difference being the 'phase' variable.
-	// During wavefront path tracing this allows us to select the phase without a copyToDevice,
-	// by passing the right param set for the Optix call. A bit ugly but it works.
+	cudaMalloc( (void**)(&d_params), sizeof( Params ) );
 
 	// load and compile PTX
 	string ptx;
@@ -124,16 +139,16 @@ void RenderCore::CreateOptixContext( int cc )
 	}
 	else
 	{
-		const char* file = NULL;
+		const char *file = NULL;
 		if (cc / 10 == 7) file = "../../lib/RenderCore_Optix7/optix/.optix.turing.cu.ptx";
 		else if (cc / 10 == 6) file = "../../lib/RenderCore_Optix7/optix/.optix.pascal.cu.ptx";
 		else if (cc / 10 == 5) file = "../../lib/RenderCore_Optix7/optix/.optix.maxwell.cu.ptx";
 		FILE* f;
-	#ifdef _MSC_VER
+#ifdef _MSC_VER
 		fopen_s( &f, file, "rb" );
-	#else
+#else
 		f = fopen( file, "rb" );
-	#endif
+#endif
 		int len;
 		fread( &len, 1, 4, f );
 		char* t = new char[len];
@@ -146,8 +161,8 @@ void RenderCore::CreateOptixContext( int cc )
 	// create the optix module
 	OptixModuleCompileOptions module_compile_options = {};
 	module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-	module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3;
-	module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+	module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+	module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 	OptixPipelineCompileOptions pipeCompileOptions = {};
 	pipeCompileOptions.usesMotionBlur = false;
 	pipeCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
@@ -193,6 +208,7 @@ void RenderCore::CreateOptixContext( int cc )
 	OptixPipelineLinkOptions linkOptions = {};
 	linkOptions.maxTraceDepth = 1;
 	linkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+	linkOptions.overrideUsesMotionBlur = false;
 	logSize = sizeof( log );
 	CHK_OPTIX_LOG( optixPipelineCreate( optixContext, &pipeCompileOptions, &linkOptions, progGroup, 5, log, &logSize, &pipeline ) );
 	// calculate the stack sizes, so we can specify all parameters to optixPipelineSetStackSize
@@ -204,7 +220,7 @@ void RenderCore::CreateOptixContext( int cc )
 
 	// create the shader binding table
 	SBTRecord rsbt[5] = {}; // , ms_sbt[2], hg_sbt[2];
-	for (int i = 0; i < 5; i++) optixSbtRecordPackHeader( progGroup[i], &rsbt[i] );
+	for( int i = 0; i < 5; i++ ) optixSbtRecordPackHeader( progGroup[i], &rsbt[i] );
 	sbt.raygenRecord = (CUdeviceptr)(new CoreBuffer<SBTRecord>( 1, ON_DEVICE, &rsbt[0] ))->DevPtr();
 	sbt.missRecordBase = (CUdeviceptr)(new CoreBuffer<SBTRecord>( 2, ON_DEVICE, &rsbt[1] ))->DevPtr();
 	sbt.hitgroupRecordBase = (CUdeviceptr)(new CoreBuffer<SBTRecord>( 2, ON_DEVICE, &rsbt[3] ))->DevPtr();
@@ -218,11 +234,6 @@ void RenderCore::CreateOptixContext( int cc )
 //  +-----------------------------------------------------------------------------+
 void RenderCore::Init()
 {
-#ifdef _DEBUG
-	printf( "Initializing Optix7 core - DEBUG build.\n" );
-#else
-	printf( "Initializing Optix7 core - RELEASE build.\n" );
-#endif
 	// select the fastest device
 	uint device = CUDATools::FastestDevice();
 	cudaSetDevice( device );
@@ -239,9 +250,9 @@ void RenderCore::Init()
 	// initialize Optix7
 	CreateOptixContext( computeCapability );
 	// render settings
-	stageClampValue( 10.0f );
+	SetClampValue( 10.0f );
 	// prepare counters for persistent threads
-	counterBuffer = new CoreBuffer<Counters>( 1, ON_DEVICE | ON_HOST );
+	counterBuffer = new CoreBuffer<Counters>( 1, ON_HOST | ON_DEVICE );
 	SetCounters( counterBuffer->DevPtr() );
 	// prepare the bluenoise data
 	const uchar* data8 = (const uchar*)sob256_64; // tables are 8 bit per entry
@@ -259,7 +270,7 @@ void RenderCore::Init()
 	// allow CoreMeshes to access the core
 	CoreMesh::renderCore = this;
 	// prepare timing events
-	for (int i = 0; i < MAXPATHLENGTH; i++)
+	for( int i = 0; i < MAXPATHLENGTH; i++ )
 	{
 		cudaEventCreate( &shadeStart[i] );
 		cudaEventCreate( &shadeEnd[i] );
@@ -268,13 +279,6 @@ void RenderCore::Init()
 	}
 	cudaEventCreate( &shadowStart );
 	cudaEventCreate( &shadowEnd );
-	// create events for worker thread communication
-	startEvent = CreateEvent( NULL, false, false, NULL );
-	doneEvent = CreateEvent( NULL, false, false, NULL );
-	// create worker thread
-	renderThread = new RenderThread();
-	renderThread->Init( this );
-	renderThread->start();
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -312,7 +316,6 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 		connectionBuffer = new CoreBuffer<float4>( maxPixels * scrspp * 3 * 2, ON_DEVICE );
 		accumulator = new CoreBuffer<float4>( maxPixels, ON_DEVICE );
 		hitBuffer = new CoreBuffer<float4>( maxPixels * scrspp, ON_DEVICE );
-		cudaMemset( hitBuffer->DevPtr(), 255, maxPixels * scrspp * sizeof( float4 ) ); // set all hits to -1 for first frame.
 		pathStateBuffer = new CoreBuffer<float4>( maxPixels * scrspp * 3, ON_DEVICE );
 		params.connectData = connectionBuffer->DevPtr();
 		params.accumulator = accumulator->DevPtr();
@@ -329,14 +332,14 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 //  |  RenderCore::SetGeometry                                                    |
 //  |  Set the geometry data for a model.                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles )
+void RenderCore::SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles, const uint* alphaFlags )
 {
 	// Note: for first-time setup, meshes are expected to be passed in sequential order.
 	// This will result in new CoreMesh pointers being pushed into the meshes vector.
 	// Subsequent mesh changes will be applied to existing CoreMeshes. This is deliberately
 	// minimalistic; RenderSystem is responsible for a proper (fault-tolerant) interface.
 	if (meshIdx >= meshes.size()) meshes.push_back( new CoreMesh() );
-	meshes[meshIdx]->SetGeometry( vertexData, vertexCount, triangleCount, triangles );
+	meshes[meshIdx]->SetGeometry( vertexData, vertexCount, triangleCount, triangles, alphaFlags );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -376,16 +379,17 @@ void RenderCore::SetInstance( const int instanceIdx, const int meshIdx, const ma
 }
 
 //  +-----------------------------------------------------------------------------+
-//  |  RenderCore::FinalizeInstances                                              |
-//  |  Update instance descriptor array on device.                          LH2'20|
+//  |  RenderCore::UpdateToplevel                                                 |
+//  |  After changing meshes, instances or instance transforms, we need to        |
+//  |  rebuild the top-level structure.                                     LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::FinalizeInstances()
+void RenderCore::UpdateToplevel()
 {
 	// resize instance array if more space is needed
 	if (instances.size() > (size_t)instanceArray->GetSize())
 	{
 		delete instanceArray;
-		instanceArray = new CoreBuffer<OptixInstance>( instances.size() + 4, ON_HOST | ON_DEVICE | STAGED );
+		instanceArray = new CoreBuffer<OptixInstance>( instances.size() + 4, ON_HOST | ON_DEVICE );
 	}
 	// copy instance descriptors to the array, sync with device
 	for (int s = (int)instances.size(), i = 0; i < s; i++)
@@ -393,381 +397,7 @@ void RenderCore::FinalizeInstances()
 		instances[i]->instance.traversableHandle = meshes[instances[i]->mesh]->gasHandle;
 		instanceArray->HostPtr()[i] = instances[i]->instance;
 	}
-	instanceArray->StageCopyToDevice();
-	// pass instance descriptors to the device; will be used during shading.
-	if (instancesDirty)
-	{
-		// prepare CoreInstanceDesc array. For any sane number of instances this should
-		// be efficient while yielding supreme flexibility.
-		vector<CoreInstanceDesc> instDescArray;
-		for (auto instance : instances)
-		{
-			CoreInstanceDesc id;
-			id.triangles = meshes[instance->mesh]->triangles->DevPtr();
-			mat4 T, invT;
-			if (instance->transform)
-			{
-				T = mat4::Identity();
-				memcpy( &T, instance->transform, 12 * sizeof( float ) );
-				invT = T.Inverted();
-			}
-			else T = mat4::Identity(), invT = mat4::Identity();
-			id.invTransform = *(float4x4*)&invT;
-			instDescArray.push_back( id );
-		}
-		if (instDescBuffer == 0 || instDescBuffer->GetSize() < (int)instances.size())
-		{
-			delete instDescBuffer;
-			// size of instance list changed beyond capacity.
-			// Allocate a new buffer, with some slack, to prevent excessive reallocs.
-			instDescBuffer = new CoreBuffer<CoreInstanceDesc>( instances.size() * 2, ON_HOST | ON_DEVICE );
-			stageInstanceDescriptors( instDescBuffer->DevPtr() );
-		}
-		memcpy( instDescBuffer->HostPtr(), instDescArray.data(), instDescArray.size() * sizeof( CoreInstanceDesc ) );
-		instDescBuffer->StageCopyToDevice();
-		// instancesDirty = false; // TODO: for now we do this every frame.
-	}
-	// rendering is allowed from now on
-	gpuHasSceneData = true;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::SetTextures                                                    |
-//  |  Set the texture data.                                                LH2'19|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::SetTextures( const CoreTexDesc* tex, const int textures )
-{
-	// copy the supplied array of texture descriptors
-	delete texDescs; texDescs = 0;
-	textureCount = textures;
-	if (textureCount == 0) return; // scene has no textures
-	texDescs = new CoreTexDesc[textureCount];
-	memcpy( texDescs, tex, textureCount * sizeof( CoreTexDesc ) );
-	// copy texels for each type to the device
-	SyncStorageType( TexelStorage::ARGB32 );
-	SyncStorageType( TexelStorage::ARGB128 );
-	SyncStorageType( TexelStorage::NRM32 );
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::SyncStorageType                                                |
-//  |  Copies texel data for one storage type (argb32, argb128 or nrm32) to the   |
-//  |  device. Note that this data is obtained from the original HostTexture      |
-//  |  texel arrays.                                                        LH2'19|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::SyncStorageType( const TexelStorage storage )
-{
-	uint texelTotal = 0;
-	for (int i = 0; i < textureCount; i++) if (texDescs[i].storage == storage) texelTotal += texDescs[i].pixelCount;
-	texelTotal = max( 16, texelTotal ); // OptiX does not tolerate empty buffers...
-	// construct the continuous arrays
-	switch (storage)
-	{
-	case TexelStorage::ARGB32:
-		delete texel32Buffer;
-		texel32Buffer = new CoreBuffer<uint>( texelTotal, ON_HOST | ON_DEVICE | STAGED );
-		stageARGB32Pixels( texel32Buffer->DevPtr() );
-		coreStats.argb32TexelCount = texelTotal;
-		break;
-	case TexelStorage::ARGB128:
-		delete texel128Buffer;
-		stageARGB128Pixels( (texel128Buffer = new CoreBuffer<float4>( texelTotal, ON_HOST | ON_DEVICE | STAGED ))->DevPtr() );
-		coreStats.argb128TexelCount = texelTotal;
-		break;
-	case TexelStorage::NRM32:
-		delete normal32Buffer;
-		stageNRM32Pixels( (normal32Buffer = new CoreBuffer<uint>( texelTotal, ON_HOST | ON_DEVICE | STAGED ))->DevPtr() );
-		coreStats.nrm32TexelCount = texelTotal;
-		break;
-	}
-	// copy texel data to arrays
-	texelTotal = 0;
-	for (int i = 0; i < textureCount; i++) if (texDescs[i].storage == storage)
-	{
-		void* destination = 0;
-		switch (storage)
-		{
-		case TexelStorage::ARGB32:  destination = texel32Buffer->HostPtr() + texelTotal; break;
-		case TexelStorage::ARGB128: destination = texel128Buffer->HostPtr() + texelTotal; break;
-		case TexelStorage::NRM32:   destination = normal32Buffer->HostPtr() + texelTotal; break;
-		}
-		memcpy( destination, texDescs[i].idata, texDescs[i].pixelCount * sizeof( uint ) );
-		texDescs[i].firstPixel = texelTotal;
-		texelTotal += texDescs[i].pixelCount;
-	}
-	// move to device
-	if (storage == TexelStorage::ARGB32) if (texel32Buffer) texel32Buffer->StageCopyToDevice();
-	if (storage == TexelStorage::ARGB128) if (texel128Buffer) texel128Buffer->StageCopyToDevice();
-	if (storage == TexelStorage::NRM32) if (normal32Buffer) normal32Buffer->StageCopyToDevice();
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::SetMaterials                                                   |
-//  |  Set the material data.                                               LH2'19|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
-{
-#define TOCHAR(a) ((uint)((a)*255.0f))
-#define TOUINT4(a,b,c,d) (TOCHAR(a)+(TOCHAR(b)<<8)+(TOCHAR(c)<<16)+(TOCHAR(d)<<24))
-	// Notes:
-	// Call this after the textures have been set; CoreMaterials store the offset of each texture
-	// in the continuous arrays; this data is valid only when textures are in sync.
-	if (materialBuffer == 0 || materialCount > materialBuffer->GetSize())
-	{
-		delete hostMaterialBuffer;
-	hostMaterialBuffer = new CUDAMaterial[materialCount];
-	}
-	for (int i = 0; i < materialCount; i++)
-	{
-		// perform conversion to internal material format
-		CoreMaterial& m = mat[i];
-		CUDAMaterial& gpuMat = hostMaterialBuffer[i];
-		memset( &gpuMat, 0, sizeof( CUDAMaterial ) );
-		gpuMat.SetDiffuse( m.color.value );
-		gpuMat.SetTransmittance( make_float3( 1 ) - m.absorption.value );
-		gpuMat.parameters.x = TOUINT4( m.metallic.value, m.subsurface.value, m.specular.value, m.roughness.value );
-		gpuMat.parameters.y = TOUINT4( m.specularTint.value, m.anisotropic.value, m.sheen.value, m.sheenTint.value );
-		gpuMat.parameters.z = TOUINT4( m.clearcoat.value, m.clearcoatGloss.value, m.transmission.value, 0 );
-		gpuMat.parameters.w = *((uint*)&m.eta);
-		if (m.color.textureID != -1) gpuMat.tex0 = Map<CoreMaterial::Vec3Value>( m.color );
-		if (m.detailColor.textureID != -1) gpuMat.tex1 = Map<CoreMaterial::Vec3Value>( m.detailColor );
-		if (m.normals.textureID != -1) gpuMat.nmap0 = Map<CoreMaterial::Vec3Value>( m.normals );
-		if (m.detailNormals.textureID != -1) gpuMat.nmap1 = Map<CoreMaterial::Vec3Value>( m.detailNormals );
-		if (m.roughness.textureID != -1) gpuMat.rmap = Map<CoreMaterial::ScalarValue>( m.roughness ); /* also means metallic is mapped */
-		if (m.specular.textureID != -1) gpuMat.smap = Map<CoreMaterial::ScalarValue>( m.specular );
-		bool hdr = false;
-		if (m.color.textureID != -1) if (texDescs[m.color.textureID].flags & 8 /* HostTexture::HDR */) hdr = true;
-		gpuMat.flags =
-			(m.eta.value < 1 ? ISDIELECTRIC : 0) + (hdr ? DIFFUSEMAPISHDR : 0) +
-			(m.color.textureID != -1 ? HASDIFFUSEMAP : 0) +
-			(m.normals.textureID != -1 ? HASNORMALMAP : 0) +
-			(m.specular.textureID != -1 ? HASSPECULARITYMAP : 0) +
-			(m.roughness.textureID != -1 ? HASROUGHNESSMAP : 0) +
-			(m.detailNormals.textureID != -1 ? HAS2NDNORMALMAP : 0) +
-			(m.detailColor.textureID != -1 ? HAS2NDDIFFUSEMAP : 0) +
-			((m.flags & 1) ? HASSMOOTHNORMALS : 0) + ((m.flags & 2) ? HASALPHA : 0);
-	}
-	if (!materialBuffer)
-	{
-		materialBuffer = new CoreBuffer<CUDAMaterial>( materialCount + 512, ON_HOST | ON_DEVICE | STAGED, hostMaterialBuffer );
-	}
-	else if (materialCount <= materialBuffer->GetSize())
-	{
-		// just set the new material data
-		materialBuffer->SetHostData( hostMaterialBuffer );
-	}
-	else /* if (materialCount > materialBuffer->GetSize()) */
-	{
-		// TODO: realloc, remove +512 during allocation
-	}
-	materialBuffer->StageCopyToDevice();
-	stageMaterialList( materialBuffer->DevPtr() );
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::UpdateLightTree                                                |
-//  |  Prepare the light BVH for stochastic lightcuts.                      LH2'20|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::UpdateLightTreeNormals( const int node )
-{
-	LightCluster* treeData = lightTree->HostPtr();
-	if (treeData[node].left > -1)
-	{
-		UpdateLightTreeNormals( treeData[node].left );
-		UpdateLightTreeNormals( treeData[node].right );
-		// check normals of children
-		const float3 Nl = treeData[treeData[node].left].N;
-		const float3 Nr = treeData[treeData[node].right].N;
-		if (dot( Nl, Nr ) > 0.9f)
-		{
-			// left and right normals are similar enough to be useful
-			treeData[node].N = normalize( Nl + Nr );
-		}
-		else
-		{
-			// store an impossible normal
-			treeData[node].N = make_float3( 0 );
-		}
-		// store parent index in children
-		treeData[treeData[node].left].parent = treeData[treeData[node].right].parent = node;
-	}
-	else
-	{
-		// get normal from light source
-		const int lightIdx = treeData[node].light;
-		if (lightIdx & ((1 << 30) + (1 << 29)))
-		{
-			// point or spot light
-			treeData[node].N = make_float3( 0 );
-		}
-		else
-		{
-			// triangle light
-			CoreLightTri& light = triLightBuffer->HostPtr()[lightIdx];
-			treeData[node].N = light.N;
-		}
-	}
-}
-int RenderCore::FindBestMatch( int* todo, const int idx, const int N )
-{
-	float bestCost = 1e34f, bestIdx = 0;
-	LightCluster* treeData = lightTree->HostPtr();
-	for (int i = 0; i < N; i++) if (i != idx)
-	{
-		LightCluster tmp = treeData[todo[idx]];
-		tmp.bounds.Grow( treeData[todo[i]].bounds );
-		tmp.intensity += treeData[todo[i]].intensity;
-		float cost = tmp.Cost();
-		if (cost < bestCost) bestCost = cost, bestIdx = i;
-	}
-	return bestIdx;
-}
-void RenderCore::UpdateLightTree()
-{
-	// create an array of triLights
-	delete lightTree;
-	int N = triLightBuffer->GetSize(), remaining = N;
-	int M = pointLightBuffer->GetSize();
-	int O = spotLightBuffer->GetSize();
-	lightTree = new CoreBuffer<LightCluster>( (N + M + O) * 2, ON_HOST | ON_DEVICE | STAGED );
-	LightCluster* treeData = lightTree->HostPtr();
-	int* todo = new int[N + M + O];
-	for (int i = 0; i < N; i++)
-		treeData[i + 1] = LightCluster( triLightBuffer->HostPtr()[i], i ), // leaf for light i has index i + 1
-		todo[i] = i + 1;
-	for (int i = 0; i < M; i++)
-		treeData[i + 1 + N] = LightCluster( pointLightBuffer->HostPtr()[i], i ),
-		todo[i + N] = i + 1 + N;
-	for (int i = 0; i < O; i++)
-		treeData[i + 1 + N + M] = LightCluster( spotLightBuffer->HostPtr()[i], i ),
-		todo[i + N + M] = i + 1 + N + M;
-	remaining += M + O;
-	N += M + O;
-	// build the BVH, agglomerative
-	int A = 0;
-	int B = FindBestMatch( todo, A, remaining );
-	while (remaining > 1)
-	{
-		int C = FindBestMatch( todo, B, remaining );
-		if (A == C)
-		{
-			// create a new cluster
-			treeData[N + 1] = treeData[todo[A]];
-			treeData[N + 1].bounds.Grow( treeData[todo[B]].bounds );
-			treeData[N + 1].intensity += treeData[todo[B]].intensity;
-			treeData[N + 1].left = todo[A];
-			treeData[N + 1].right = todo[B];
-			// delete A and B cluster indices from 'todo'
-			for (int i = A; i < remaining - 1; i++) todo[i] = todo[i + 1]; // remove A
-			if (B > A) B--;
-			for (int i = B; i < remaining - 2; i++) todo[i] = todo[i + 1]; // remove B
-			remaining -= 2;
-			// add the new cluster index to 'todo'
-			todo[remaining] = ++N;
-			// prepare search for next couple
-			A = remaining++;
-			B = FindBestMatch( todo, A, remaining );
-		}
-		else A = B, B = C;
-	}
-	// finalize
-	treeData[0] = treeData[todo[0]]; // put root in convenient place
-	delete[] todo;
-	UpdateLightTreeNormals( 0 );
-	// copy to device
-	stageLightTree( lightTree->DevPtr() );
-	lightTree->StageCopyToDevice();
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::SetLights                                                      |
-//  |  Set the light data.                                                  LH2'20|
-//  +-----------------------------------------------------------------------------+
-template <class T> T* RenderCore::StagedBufferResize( CoreBuffer<T>*& lightBuffer, const int newCount, const T* sourceData )
-{
-	// helper function for (re)allocating light buffers with staged buffer and pointer update.
-	if (lightBuffer == 0 || newCount > lightBuffer->GetSize())
-	{
-		delete lightBuffer;
-		lightBuffer = new CoreBuffer<T>( newCount, ON_HOST | ON_DEVICE );
-	}
-	memcpy( lightBuffer->HostPtr(), sourceData, newCount * sizeof( T ) );
-	lightBuffer->StageCopyToDevice();
-	return lightBuffer->DevPtr();
-}
-void RenderCore::SetLights( const CoreLightTri* triLights, const int triLightCount,
-	const CorePointLight* pointLights, const int pointLightCount,
-	const CoreSpotLight* spotLights, const int spotLightCount,
-	const CoreDirectionalLight* directionalLights, const int directionalLightCount )
-{
-	stageTriLights( StagedBufferResize<CoreLightTri>( triLightBuffer, triLightCount, triLights ) );
-	stagePointLights( StagedBufferResize<CorePointLight>( pointLightBuffer, pointLightCount, pointLights ) );
-	stageSpotLights( StagedBufferResize<CoreSpotLight>( spotLightBuffer, spotLightCount, spotLights ) );
-	stageDirectionalLights( StagedBufferResize<CoreDirectionalLight>( directionalLightBuffer, directionalLightCount, directionalLights ) );
-	stageLightCounts( triLightCount, pointLightCount, spotLightCount, directionalLightCount );
-	noDirectLightsInScene = (triLightCount + pointLightCount + spotLightCount + directionalLightCount) == 0;
-	UpdateLightTree();
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::SetSkyData                                                     |
-//  |  Set the sky dome data.                                               LH2'19|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::SetSkyData( const float3* pixels, const uint width, const uint height, const mat4& worldToLight )
-{
-	delete skyPixelBuffer;
-	skyPixelBuffer = new CoreBuffer<float4>( width * height + (width >> 6) * (height >> 6), ON_HOST | ON_DEVICE, 0 );
-	for (uint i = 0; i < width * height; i++) skyPixelBuffer->HostPtr()[i] = make_float4( pixels[i], 0 );
-	stageSkyPixels( skyPixelBuffer->DevPtr() );
-	stageSkySize( width, height );
-	stageWorldToSky( worldToLight );
-	skywidth = width;
-	skyheight = height;
-	// calculate scaled-down version of the sky
-	const uint w = width >> 6, h = height >> 6;
-	float4* orig = skyPixelBuffer->HostPtr();
-	float4* scaled = skyPixelBuffer->HostPtr() + width * height;
-	for (uint y = 0; y < h; y++) for (uint x = 0; x < w; x++)
-	{
-		// average 64 * 64 pixels
-		float4 total = make_float4( 0 );
-		float4* tile = orig + x * 64 + y * 64 * width;
-		for (int v = 0; v < 64; v++) for (int u = 0; u < 64; u++) total += tile[u + v * width];
-		scaled[x + y * w] = total * (1.0f / (64 * 64));
-	}
-	// copy sky data to device
-	skyPixelBuffer->CopyToDevice();
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::Setting                                                        |
-//  |  Modify a render setting.                                             LH2'19|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::Setting( const char* name, const float value )
-{
-	if (!strcmp( name, "epsilon" ))
-	{
-		if (vars.geometryEpsilon != value) stageGeometryEpsilon( vars.geometryEpsilon = value );
-	}
-	else if (!strcmp( name, "clampValue" ))
-	{
-		if (vars.clampValue != value) stageClampValue( vars.clampValue = value );
-	}
-	else if (!strcmp( name, "noiseShift" ))
-	{
-		noiseShift = fmod( value, 1.0f );
-	}
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::UpdateToplevel                                                 |
-//  |  After changing meshes, instances or instance transforms, we need to        |
-//  |  rebuild the top-level structure.                                     LH2'19|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::UpdateToplevel()
-{
-	// build accstructs for modified meshes
-	for (CoreMesh* m : meshes) if (m->accstrucNeedsUpdate) m->UpdateAccstruc();
+	instanceArray->CopyToDevice();
 	// build the top-level tree
 	OptixBuildInput buildInput = {};
 	buildInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
@@ -777,7 +407,7 @@ void RenderCore::UpdateToplevel()
 	options.buildFlags = OPTIX_BUILD_FLAG_NONE;
 	options.operation = OPTIX_BUILD_OPERATION_BUILD;
 	static size_t reservedTemp = 0, reservedTop = 0;
-	static CoreBuffer<uchar>* temp, * topBuffer = 0;
+	static CoreBuffer<uchar> *temp, *topBuffer = 0;
 	OptixAccelBufferSizes sizes;
 	CHK_OPTIX( optixAccelComputeMemoryUsage( optixContext, &options, &buildInput, 1, &sizes ) );
 	if (sizes.tempSizeInBytes > reservedTemp)
@@ -797,18 +427,171 @@ void RenderCore::UpdateToplevel()
 }
 
 //  +-----------------------------------------------------------------------------+
-//  |  RenderThread::run                                                          |
-//  |  Main function of the render worker thread.                           LH2'20|
+//  |  RenderCore::SetTextures                                                    |
+//  |  Set the texture data.                                                LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderThread::run()
+void RenderCore::SetTextures( const CoreTexDesc* tex, const int textures )
 {
-	while (1)
+	// copy the supplied array of texture descriptors
+	delete texDescs; texDescs = 0;
+	textureCount = textures;
+	if (textureCount == 0) return; // scene has no textures
+	texDescs = new CoreTexDesc[textureCount];
+	memcpy( texDescs, tex, textureCount * sizeof( CoreTexDesc ) );
+	// copy texels for each type to the device
+	SyncStorageType( TexelStorage::ARGB32 );
+	SyncStorageType( TexelStorage::ARGB128 );
+	SyncStorageType( TexelStorage::NRM32 );
+	// Notes:
+	// - the three types are copied from the original HostTexture pixel data (to which the
+	//   descriptors point) straight to the GPU. There is no pixel storage on the host
+	//   in the RenderCore.
+	// - the types are copied one by one. Copying involves creating a temporary host-side
+	//   buffer; doing this one by one allows us to delete host-side data for one type
+	//   before allocating space for the next, thus reducing storage requirements.
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  RenderCore::SyncStorageType                                                |
+//  |  Copies texel data for one storage type (argb32, argb128 or nrm32) to the   |
+//  |  device. Note that this data is obtained from the original HostTexture      |
+//  |  texel arrays.                                                        LH2'19|
+//  +-----------------------------------------------------------------------------+
+void RenderCore::SyncStorageType( const TexelStorage storage )
+{
+	uint texelTotal = 0;
+	for (int i = 0; i < textureCount; i++) if (texDescs[i].storage == storage) texelTotal += texDescs[i].pixelCount;
+	texelTotal = max( 16, texelTotal ); // OptiX does not tolerate empty buffers...
+	// construct the continuous arrays
+	switch (storage)
 	{
-		WaitForSingleObject( coreState.startEvent, INFINITE );
-		// render a single frame
-		coreState.RenderImpl( view );
-		// we're done, go back to waiting
-		SetEvent( coreState.doneEvent );
+	case TexelStorage::ARGB32:
+		delete texel32Buffer;
+		texel32Buffer = new CoreBuffer<uint>( texelTotal, ON_HOST | ON_DEVICE );
+		SetARGB32Pixels( texel32Buffer->DevPtr() );
+		coreStats.argb32TexelCount = texelTotal;
+		break;
+	case TexelStorage::ARGB128:
+		delete texel128Buffer;
+		SetARGB128Pixels( (texel128Buffer = new CoreBuffer<float4>( texelTotal, ON_HOST | ON_DEVICE ))->DevPtr() );
+		coreStats.argb128TexelCount = texelTotal;
+		break;
+	case TexelStorage::NRM32:
+		delete normal32Buffer;
+		SetNRM32Pixels( (normal32Buffer = new CoreBuffer<uint>( texelTotal, ON_HOST | ON_DEVICE ))->DevPtr() );
+		coreStats.nrm32TexelCount = texelTotal;
+		break;
+	}
+	// copy texel data to arrays
+	texelTotal = 0;
+	for (int i = 0; i < textureCount; i++) if (texDescs[i].storage == storage)
+	{
+		void* destination = 0;
+		switch (storage)
+		{
+		case TexelStorage::ARGB32:  destination = texel32Buffer->HostPtr() + texelTotal; break;
+		case TexelStorage::ARGB128: destination = texel128Buffer->HostPtr() + texelTotal; break;
+		case TexelStorage::NRM32:   destination = normal32Buffer->HostPtr() + texelTotal; break;
+		}
+		memcpy( destination, texDescs[i].idata, texDescs[i].pixelCount * sizeof( uint ) );
+		texDescs[i].firstPixel = texelTotal;
+		texelTotal += texDescs[i].pixelCount;
+	}
+	// move to device
+	if (storage == TexelStorage::ARGB32) if (texel32Buffer) texel32Buffer->MoveToDevice();
+	if (storage == TexelStorage::ARGB128) if (texel128Buffer) texel128Buffer->MoveToDevice();
+	if (storage == TexelStorage::NRM32) if (normal32Buffer) normal32Buffer->MoveToDevice();
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  RenderCore::SetMaterials                                                   |
+//  |  Set the material data.                                               LH2'19|
+//  +-----------------------------------------------------------------------------+
+void RenderCore::SetMaterials( CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount )
+{
+	// Notes:
+	// Call this after the textures have been set; CoreMaterials store the offset of each texture
+	// in the continuous arrays; this data is valid only when textures are in sync.
+	delete materialBuffer;
+	delete hostMaterialBuffer;
+	hostMaterialBuffer = new CoreMaterial[materialCount];
+	memcpy( hostMaterialBuffer, mat, materialCount * sizeof( CoreMaterial ) );
+	for (int i = 0; i < materialCount; i++)
+	{
+		CoreMaterial& m = hostMaterialBuffer[i];
+		const CoreMaterialEx& e = matEx[i];
+		if (e.texture[0] != -1) m.texaddr0 = texDescs[e.texture[0]].firstPixel;
+		if (e.texture[1] != -1) m.texaddr1 = texDescs[e.texture[1]].firstPixel;
+		if (e.texture[2] != -1) m.texaddr2 = texDescs[e.texture[2]].firstPixel;
+		if (e.texture[3] != -1) m.nmapaddr0 = texDescs[e.texture[3]].firstPixel;
+		if (e.texture[4] != -1) m.nmapaddr1 = texDescs[e.texture[4]].firstPixel;
+		if (e.texture[5] != -1) m.nmapaddr2 = texDescs[e.texture[5]].firstPixel;
+		if (e.texture[6] != -1) m.smapaddr = texDescs[e.texture[6]].firstPixel;
+		if (e.texture[7] != -1) m.rmapaddr = texDescs[e.texture[7]].firstPixel;
+		// if (e.texture[ 8] != -1) m.texaddr0 = texDescs[e.texture[ 8]].firstPixel; second roughness map is not used
+		if (e.texture[9] != -1) m.cmapaddr = texDescs[e.texture[9]].firstPixel;
+		if (e.texture[10] != -1) m.amapaddr = texDescs[e.texture[10]].firstPixel;
+	}
+	materialBuffer = new CoreBuffer<CoreMaterial>( materialCount, ON_DEVICE | ON_HOST /* on_host: for alpha mapped tris */, hostMaterialBuffer );
+	SetMaterialList( materialBuffer->DevPtr() );
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  RenderCore::SetLights                                                      |
+//  |  Set the light data.                                                  LH2'19|
+//  +-----------------------------------------------------------------------------+
+void RenderCore::SetLights( const CoreLightTri* areaLights, const int areaLightCount,
+	const CorePointLight* pointLights, const int pointLightCount,
+	const CoreSpotLight* spotLights, const int spotLightCount,
+	const CoreDirectionalLight* directionalLights, const int directionalLightCount )
+{
+	delete areaLightBuffer;
+	delete pointLightBuffer;
+	delete spotLightBuffer;
+	delete directionalLightBuffer;
+	SetAreaLights( (areaLightBuffer = new CoreBuffer<CoreLightTri>( areaLightCount, ON_DEVICE, areaLights ))->DevPtr() );
+	SetPointLights( (pointLightBuffer = new CoreBuffer<CorePointLight>( pointLightCount, ON_DEVICE, pointLights ))->DevPtr() );
+	SetSpotLights( (spotLightBuffer = new CoreBuffer<CoreSpotLight>( spotLightCount, ON_DEVICE, spotLights ))->DevPtr() );
+	SetDirectionalLights( (directionalLightBuffer = new CoreBuffer<CoreDirectionalLight>( directionalLightCount, ON_DEVICE, directionalLights ))->DevPtr() );
+	SetLightCounts( areaLightCount, pointLightCount, spotLightCount, directionalLightCount );
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  RenderCore::SetSkyData                                                     |
+//  |  Set the sky dome data.                                               LH2'19|
+//  +-----------------------------------------------------------------------------+
+void RenderCore::SetSkyData( const float3* pixels, const uint width, const uint height )
+{
+	delete skyPixelBuffer;
+	skyPixelBuffer = new CoreBuffer<float3>( width * height, ON_DEVICE, pixels );
+	SetSkyPixels( skyPixelBuffer->DevPtr() );
+	SetSkySize( width, height );
+	skywidth = width;
+	skyheight = height;
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  RenderCore::Setting                                                        |
+//  |  Modify a render setting.                                             LH2'19|
+//  +-----------------------------------------------------------------------------+
+void RenderCore::Setting( const char* name, const float value )
+{
+	if (!strcmp( name, "epsilon" ))
+	{
+		if (vars.geometryEpsilon != value)
+		{
+			vars.geometryEpsilon = value;
+			SetGeometryEpsilon( value );
+			// context["geometryEpsilon"]->setFloat( value );
+		}
+	}
+	else if (!strcmp( name, "clampValue" ))
+	{
+		if (vars.clampValue != value)
+		{
+			vars.clampValue = value;
+			SetClampValue( value );
+		}
 	}
 }
 
@@ -816,65 +599,77 @@ void RenderThread::run()
 //  |  RenderCore::Render                                                         |
 //  |  Produce one image.                                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bool async )
+void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 {
-	if (!gpuHasSceneData) return;
 	// wait for OpenGL
 	glFinish();
-	// finalize staged writes
-	pushStagedCopies();
-	// handle converge restart
+	Timer timer;
+	// clean accumulator, if requested
 	if (converge == Restart || firstConvergingFrame)
 	{
+		accumulator->Clear( ON_DEVICE );
 		samplesTaken = 0;
 		firstConvergingFrame = true; // if we switch to converging, it will be the first converging frame.
 		camRNGseed = 0x12345678; // same seed means same noise.
 	}
 	if (converge == Converge) firstConvergingFrame = false;
-	// do the actual rendering
-	renderTimer.reset();
-	if (async)
+	// update instance descriptor array on device
+	// Note: we are not using the built-in OptiX instance system for shading. Instead,
+	// we figure out which triangle we hit, and to what instance it belongs; from there,
+	// we handle normal management and material acquisition in custom code.
+	if (instancesDirty)
 	{
-		asyncRenderInProgress = true;
-		renderThread->Init( this, view );
-		SetEvent( startEvent );
+		// prepare CoreInstanceDesc array. For any sane number of instances this should
+		// be efficient while yielding supreme flexibility.
+		vector<CoreInstanceDesc> instDescArray;
+		for (auto instance : instances)
+		{
+			CoreInstanceDesc id;
+			id.triangles = meshes[instance->mesh]->triangles->DevPtr();
+			mat4 T, invT;
+			if (instance->transform)
+			{
+				T = mat4::Identity();
+				memcpy( &T, instance->transform, 12 * sizeof( float ) );
+				invT = T.Inverted();
+			}
+			else
+			{
+				T = mat4::Identity();
+				invT = mat4::Identity();
+			}
+			id.invTransform = *(float4x4*)&invT;
+			instDescArray.push_back( id );
+		}
+		if (instDescBuffer == 0 || instDescBuffer->GetSize() < (int)instances.size())
+		{
+			delete instDescBuffer;
+			// size of instance list changed beyond capacity.
+			// Allocate a new buffer, with some slack, to prevent excessive reallocs.
+			instDescBuffer = new CoreBuffer<CoreInstanceDesc>( instances.size() * 2, ON_HOST | ON_DEVICE );
+			SetInstanceDescriptors( instDescBuffer->DevPtr() );
+		}
+		memcpy( instDescBuffer->HostPtr(), instDescArray.data(), instDescArray.size() * sizeof( CoreInstanceDesc ) );
+		instDescBuffer->CopyToDevice();
+		// instancesDirty = false;
 	}
-	else
-	{
-		RenderImpl( view );
-		FinalizeRender();
-	}
-}
-void RenderCore::RenderImpl( const ViewPyramid& view )
-{
-	// update acceleration structure
-	UpdateToplevel();
-	// clean accumulator, if requested
-	if (samplesTaken == 0) accumulator->Clear( ON_DEVICE );
-	// render an image using OptiX
-	RandomUInt( shiftSeed );
+	// render image
 	coreStats.totalExtensionRays = coreStats.totalShadowRays = 0;
+	// jitter the view for TAA
 	float3 right = view.p2 - view.p1, up = view.p3 - view.p1;
+	// render an image using OptiX
 	params.posLensSize = make_float4( view.pos.x, view.pos.y, view.pos.z, view.aperture );
 	params.distortion = view.distortion;
-	params.shift = shiftSeed;
 	params.right = make_float3( right.x, right.y, right.z );
 	params.up = make_float3( up.x, up.y, up.z );
 	params.p1 = make_float3( view.p1.x, view.p1.y, view.p1.z );
 	params.pass = samplesTaken;
-	params.bvhRoot = bvhRoot;
-	// sync params to device
-	params.phase = Params::SPAWN_PRIMARY;
-	cudaMemcpyAsync( (void*)d_params[0], &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
-	params.phase = Params::SPAWN_SECONDARY;
-	cudaMemcpyAsync( (void*)d_params[1], &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
-	params.phase = Params::SPAWN_SHADOW;
-	cudaMemcpyAsync( (void*)d_params[2], &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
 	// loop
+	params.bvhRoot = bvhRoot; // meshes[1]->gasHandle;
 	Counters counters;
-	uint pathCount = scrwidth * scrheight * scrspp;
 	coreStats.deepRayCount = 0;
-	coreStats.primaryRayCount = pathCount;
+	uint pathCount = scrwidth * scrheight * scrspp;
+	int actualPathLength = 0;
 	for (int pathLength = 1; pathLength <= MAXPATHLENGTH; pathLength++)
 	{
 		// generate / extend
@@ -882,33 +677,42 @@ void RenderCore::RenderImpl( const ViewPyramid& view )
 		if (pathLength == 1)
 		{
 			// spawn and extend camera rays
+			params.phase = 0;
+			coreStats.primaryRayCount = pathCount;
 			InitCountersForExtend( pathCount );
-			CHK_OPTIX( optixLaunch( pipeline, 0, d_params[0], sizeof( Params ), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1 ) );
+			cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+			CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1 ) );
 		}
 		else
 		{
 			// extend bounced paths
 			if (pathLength == 2) coreStats.bounce1RayCount = pathCount; else coreStats.deepRayCount += pathCount;
+			params.phase = 1;
 			InitCountersSubsequent();
-			CHK_OPTIX( optixLaunch( pipeline, 0, d_params[1], sizeof( Params ), &sbt, pathCount, 1, 1 ) );
+			cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+			CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, pathCount, 1, 1 ) );
 		}
 		cudaEventRecord( traceEnd[pathLength - 1] );
 		// shade
 		cudaEventRecord( shadeStart[pathLength - 1] );
 		shade( pathCount, accumulator->DevPtr(), scrwidth * scrheight * scrspp,
-			pathStateBuffer->DevPtr(), hitBuffer->DevPtr(), noDirectLightsInScene ? 0 : connectionBuffer->DevPtr(),
-			RandomUInt( camRNGseed ) + pathLength * 91771, shiftSeed, blueNoise->DevPtr(), samplesTaken,
-			probePos.x + scrwidth * probePos.y, pathLength, scrwidth, scrheight, view.spreadAngle );
+			pathStateBuffer->DevPtr(), hitBuffer->DevPtr(), connectionBuffer->DevPtr(),
+			RandomUInt( camRNGseed ) + pathLength * 91771, blueNoise->DevPtr(), samplesTaken,
+			probePos.x + scrwidth * probePos.y, pathLength, scrwidth, scrheight,
+			view.spreadAngle, view.p1, view.p2, view.p3, view.pos );
 		cudaEventRecord( shadeEnd[pathLength - 1] );
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
 		pathCount = counters.extensionRays;
+		actualPathLength = pathLength; // prevent timing loop iterations that we didn't execute
 		if (pathCount == 0) break;
 		// trace shadow rays now if the next loop iteration could overflow the buffer.
 		uint maxShadowRays = connectionBuffer->GetSize() / 3;
 		if ((pathCount + counters.shadowRays) >= maxShadowRays) if (counters.shadowRays > 0)
 		{
-			CHK_OPTIX( optixLaunch( pipeline, 0, d_params[2], sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
+			params.phase = 2;
+			cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+			CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
 			counterBuffer->HostPtr()[0].shadowRays = 0;
 			counterBuffer->CopyToDevice();
 			printf( "WARNING: connection buffer overflowed.\n" ); // we should not have to do this; handled here to be conservative.
@@ -918,64 +722,32 @@ void RenderCore::RenderImpl( const ViewPyramid& view )
 	cudaEventRecord( shadowStart );
 	if (counters.shadowRays > 0)
 	{
-		CHK_OPTIX( optixLaunch( pipeline, 0, d_params[2], sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
+		params.phase = 2;
+		cudaMemcpyAsync( (void*)d_params, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+		CHK_OPTIX( optixLaunch( pipeline, 0, d_params, sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
 	}
 	cudaEventRecord( shadowEnd );
 	// gather ray tracing statistics
 	coreStats.totalShadowRays = counters.shadowRays;
 	coreStats.totalExtensionRays = counters.totalExtensionRays;
-	// finalize statistics
-	cudaStreamSynchronize( 0 );
-	coreStats.totalRays = coreStats.totalExtensionRays + coreStats.totalShadowRays;
-	coreStats.traceTime0 = CUDATools::Elapsed( traceStart[0], traceEnd[0] );
-	coreStats.traceTime1 = CUDATools::Elapsed( traceStart[1], traceEnd[1] );
-	coreStats.shadowTraceTime = CUDATools::Elapsed( shadowStart, shadowEnd );
-	// probe information
-	coreStats.SetProbeInfo( counters.probedInstid, counters.probedTriid, counters.probedDist );
-	const float3 P = RayTarget( probePos.x, probePos.y, 0.5f, 0.5f, make_int2( scrwidth, scrheight ), view.distortion, view.p1, right, up );
-	const float3 D = normalize( P - view.pos );
-	coreStats.probedWorldPos = view.pos + counters.probedDist * D;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::WaitForRender                                                  |
-//  |  Wait for the render thread to finish.                                      |
-//  |  Note: will deadlock if we didn't actually start a render.            LH2'20|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::WaitForRender()
-{
-	// wait for the renderthread to complete
-	if (!asyncRenderInProgress) return;
-	WaitForSingleObject( doneEvent, INFINITE );
-	asyncRenderInProgress = false;
-	// get back the RenderCore state data changed by the thread
-	coreStats = renderThread->coreState.coreStats;
-	camRNGseed = renderThread->coreState.camRNGseed;
-	shiftSeed = renderThread->coreState.shiftSeed;
-	// copy the accumulator to the OpenGL texture
-	FinalizeRender();
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::FinalizeRender                                                 |
-//  |  Fill the OpenGL rendertarget texture.                                LH2'20|
-//  +-----------------------------------------------------------------------------+
-void RenderCore::FinalizeRender()
-{
 	// present accumulator to final buffer
 	renderTarget.BindSurface();
 	samplesTaken += scrspp;
 	finalizeRender( accumulator->DevPtr(), scrwidth, scrheight, samplesTaken );
 	renderTarget.UnbindSurface();
-	// timing statistics
-	coreStats.renderTime = renderTimer.elapsed();
-	coreStats.frameOverhead = max( 0.0f, frameTimer.elapsed() - coreStats.renderTime );
-	frameTimer.reset();
+	// finalize statistics
+	cudaStreamSynchronize( 0 );
+	coreStats.renderTime = timer.elapsed();
+	coreStats.totalRays = coreStats.totalExtensionRays + coreStats.totalShadowRays;
+	coreStats.traceTime0 = CUDATools::Elapsed( traceStart[0], traceEnd[0] );
+	coreStats.traceTime1 = CUDATools::Elapsed( traceStart[1], traceEnd[1] );
+	coreStats.shadowTraceTime = CUDATools::Elapsed( shadowStart, shadowEnd );
 	coreStats.traceTimeX = coreStats.shadeTime = 0;
-	for (int i = 2; i < MAXPATHLENGTH; i++)
-		coreStats.traceTimeX += CUDATools::Elapsed( renderThread->coreState.traceStart[i], renderThread->coreState.traceEnd[i] );
-	for (int i = 0; i < MAXPATHLENGTH; i++)
-		coreStats.shadeTime += CUDATools::Elapsed( renderThread->coreState.shadeStart[i], renderThread->coreState.shadeEnd[i] );
+	for( int i = 2; i < actualPathLength; i++ ) coreStats.traceTimeX += CUDATools::Elapsed( traceStart[i], traceEnd[i] );
+	for( int i = 0; i < actualPathLength; i++ ) coreStats.shadeTime += CUDATools::Elapsed( shadeStart[i], shadeEnd[i] );
+	coreStats.probedInstid = counters.probedInstid;
+	coreStats.probedTriid = counters.probedTriid;
+	coreStats.probedDist = counters.probedDist;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -991,15 +763,6 @@ void RenderCore::Shutdown()
 	cudaFree( (void*)sbt.raygenRecord );
 	cudaFree( (void*)sbt.missRecordBase );
 	cudaFree( (void*)sbt.hitgroupRecordBase );
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::GetCoreStats                                                   |
-//  |  Get a copy of the counters.                                          LH2'19|
-//  +-----------------------------------------------------------------------------+
-CoreStats RenderCore::GetCoreStats() const
-{
-	return coreStats;
 }
 
 // EOF

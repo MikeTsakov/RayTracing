@@ -1,4 +1,4 @@
-/* platform.cpp - Copyright 2019/2021 Utrecht University
+/* platform.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -28,165 +28,18 @@
 #pragma comment( linker, "/subsystem:windows /ENTRY:mainCRTStartup" )
 
 //  +-----------------------------------------------------------------------------+
-//  |  Minimalistic Windows thread.                                         LH2'20|
+//  |  Thread::start                                                              |
+//  |  Entry point for threads.                                             LH2'19|
 //  +-----------------------------------------------------------------------------+
-extern "C" unsigned int sthread_proc( void* param ) { WinThread* tp = (WinThread*)param; tp->run(); return 0; }
-
-void WinThread::setPriority( int tp ) 
-{ 
-	SetThreadPriority( t, tp ); 
-}
-
-void WinThread::start() 
+uint sthread_proc( void* param ) { Thread* tp = (Thread*)param; tp->run(); return 0; }
+void Thread::start()
 {
-	DWORD id = 0;	
-	t = (unsigned long*)CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)sthread_proc, this, 0, &id );
-	setPriority( THREAD_PRIORITY_ABOVE_NORMAL );
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  Jobmanager.                                                          LH2'20|
-//  +-----------------------------------------------------------------------------+
-
-DWORD JobThreadProc( LPVOID lpParameter )
-{
-	JobThread* JobThreadInstance = (JobThread*)lpParameter;
-	JobThreadInstance->BackgroundTask();
-	return 0;
-}
-
-void JobThread::CreateAndStartThread( unsigned int threadId )
-{
-	m_GoSignal = CreateEvent( 0, FALSE, FALSE, 0 );
-	m_ThreadHandle = CreateThread( 0, 0, (LPTHREAD_START_ROUTINE)&JobThreadProc, (LPVOID)this, 0, 0 );
-	m_ThreadID = threadId;
-}
-void JobThread::BackgroundTask()
-{
-	while (1)
-	{
-		WaitForSingleObject( m_GoSignal, INFINITE );
-		while (1)
-		{
-			Job* job = JobManager::GetJobManager()->GetNextJob();
-			if (!job)
-			{
-				JobManager::GetJobManager()->ThreadDone( m_ThreadID );
-				break;
-			}
-			job->RunCodeWrapper();
-		}
-	}
-}
-
-void JobThread::Go()
-{
-	SetEvent( m_GoSignal );
-}
-
-void Job::RunCodeWrapper()
-{
-	Main();
-}
-
-JobManager* JobManager::m_JobManager = 0;
-
-JobManager::JobManager( unsigned int threads ) : m_NumThreads( threads )
-{
-	InitializeCriticalSection( &m_CS );
-}
-
-JobManager::~JobManager()
-{
-	DeleteCriticalSection( &m_CS );
-}
-
-void JobManager::CreateJobManager( unsigned int numThreads )
-{
-	m_JobManager = new JobManager( numThreads );
-	m_JobManager->m_JobThreadList = new JobThread[numThreads];
-	for (unsigned int i = 0; i < numThreads; i++)
-	{
-		m_JobManager->m_JobThreadList[i].CreateAndStartThread( i );
-		m_JobManager->m_ThreadDone[i] = CreateEvent( 0, FALSE, FALSE, 0 );
-	}
-	m_JobManager->m_JobCount = 0;
-}
-
-void JobManager::AddJob2( Job* a_Job )
-{
-	m_JobList[m_JobCount++] = a_Job;
-}
-
-Job* JobManager::GetNextJob()
-{
-	Job* job = 0;
-	EnterCriticalSection( &m_CS );
-	if (m_JobCount > 0) job = m_JobList[--m_JobCount];
-	LeaveCriticalSection( &m_CS );
-	return job;
-}
-
-void JobManager::RunJobs()
-{
-	for (unsigned int i = 0; i < m_NumThreads; i++) m_JobThreadList[i].Go();
-	WaitForMultipleObjects( m_NumThreads, m_ThreadDone, TRUE, INFINITE );
-}
-
-void JobManager::ThreadDone( unsigned int n )
-{
-	SetEvent( m_ThreadDone[n] );
-}
-
-DWORD CountSetBits( ULONG_PTR bitMask )
-{
-	DWORD LSHIFT = sizeof( ULONG_PTR ) * 8 - 1, bitSetCount = 0;
-	ULONG_PTR bitTest = (ULONG_PTR)1 << LSHIFT;
-	for (DWORD i = 0; i <= LSHIFT; ++i) bitSetCount += ((bitMask & bitTest) ? 1 : 0), bitTest /= 2;
-	return bitSetCount;
-}
-
-void JobManager::GetProcessorCount( uint& cores, uint& logical )
-{
-	// https://github.com/GPUOpen-LibrariesAndSDKs/cpu-core-counts
-	cores = logical = 0;
-	char* buffer = NULL;
-	DWORD len = 0;
-	if (FALSE == GetLogicalProcessorInformationEx( RelationAll, (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)buffer, &len ))
-	{
-		if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-		{
-			buffer = (char*)malloc( len );
-			if (GetLogicalProcessorInformationEx( RelationAll, (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)buffer, &len ))
-			{
-				DWORD offset = 0;
-				char* ptr = buffer;
-				while (ptr < buffer + len)
-				{
-					PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX pi = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)ptr;
-					if (pi->Relationship == RelationProcessorCore)
-					{
-						cores++;
-						for (size_t g = 0; g < pi->Processor.GroupCount; ++g)
-							logical += CountSetBits( pi->Processor.GroupMask[g].Mask );
-					}
-					ptr += pi->Size;
-				}
-			}
-			free( buffer );
-		}
-	}
-}
-
-JobManager* JobManager::GetJobManager()
-{ 
-	if (!m_JobManager) 
-	{
-		uint c, l;
-		GetProcessorCount( c, l );
-		CreateJobManager( l ); 
-	}
-	return m_JobManager; 
+	thread = std::thread( sthread_proc, this );
+#ifdef _MSC_VER
+	SetThreadPriority( thread.native_handle(), THREAD_PRIORITY_NORMAL );
+#else
+	// pthread_setschedprio(thread.native_handle(), ...);
+#endif
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -265,6 +118,7 @@ void DrawQuad()
 	glBindVertexArray( vao );
 	glDrawArrays( GL_TRIANGLES, 0, 6 );
 	glBindVertexArray( 0 );
+	CheckGL();
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -279,42 +133,36 @@ void DrawQuad()
 //  |     GL_TRIANGLE_FAN *verts* consists of  consequtive verts around a poly    |
 //  |  *width* is the line/point width in pixels.                           LH2'19|
 //  +-----------------------------------------------------------------------------+
-void DrawShapeOnScreen( std::vector<float2> verts, std::vector<float4> colors, uint GLshape, float width )
+void DrawShapeOnScreen(std::vector<float2> verts, std::vector<float4> colors, uint GLshape, float width)
 {
 	if (verts.size() == 0) return;
 
 	// Create VBOs
 	static GLuint vboID = 0;
-	GLuint vertexBuffer = CreateVBO( (const GLfloat*)&verts[0], (uint)verts.size() * sizeof( float2 ) );
-	GLuint colorBuffer = CreateVBO( (const GLfloat*)&colors[0], (uint)colors.size() * sizeof( float4 ) );
-	glGenVertexArrays( 1, &vboID );
-	glBindVertexArray( vboID );
-	BindVBO( 0, 2, vertexBuffer ); // 0 = position attribute, 2 = floats in vertex
-	BindVBO( 3, 4, colorBuffer );  // 3 = color attribute, 4 = floats in color
-	glBindVertexArray( 0 );
+	GLuint vertexBuffer = CreateVBO((const GLfloat*)&verts[0], (uint) verts.size() * sizeof(float2));
+	GLuint colorBuffer = CreateVBO((const GLfloat*)&colors[0], (uint) colors.size() * sizeof(float4));
+	glGenVertexArrays(1, &vboID);
+	glBindVertexArray(vboID);
+	BindVBO(0, 2, vertexBuffer); // 0 = position attribute, 2 = floats in vertex
+	BindVBO(3, 4, colorBuffer);  // 3 = color attribute, 4 = floats in color
+	glBindVertexArray(0);
 	CheckGL();
 
 	// Draw
-	glEnable( GL_BLEND );
-	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-	glBindVertexArray( vboID );
-	glPointSize( width );
-	glLineWidth( width );
-	glDrawArrays( GLshape, 0, (GLsizei)verts.size() );
-	glBindVertexArray( 0 );
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBindVertexArray(vboID);
+	glPointSize(width);
+	glLineWidth(width);
+	glDrawArrays(GLshape, 0, (GLsizei)verts.size());
+	glBindVertexArray(0);
 	CheckGL();
-	glDisable( GL_BLEND );
+	glDisable(GL_BLEND);
 }
 
 //  +-----------------------------------------------------------------------------+
 //  |  OpenGL texture wrapper class.                                        LH2'19|
 //  +-----------------------------------------------------------------------------+
-GLTexture::GLTexture()
-{
-	glGenTextures( 1, &ID );
-	// load later
-}
-
 GLTexture::GLTexture( uint w, uint h, uint type )
 {
 	width = w;
@@ -342,13 +190,9 @@ GLTexture::GLTexture( uint w, uint h, uint type )
 
 GLTexture::GLTexture( const char* fileName, int filter )
 {
+	GLuint textureType = GL_TEXTURE_2D;
 	glGenTextures( 1, &ID );
-	Load( fileName, filter );
-}
-
-void GLTexture::Load( const char* fileName, int filter )
-{
-	glBindTexture( GL_TEXTURE_2D, ID );
+	glBindTexture( textureType, ID );
 	FREE_IMAGE_FORMAT fif = FIF_UNKNOWN;
 	fif = FreeImage_GetFileType( fileName, 0 );
 	if (fif == FIF_UNKNOWN) fif = FreeImage_GetFIFFromFilename( fileName );
@@ -366,13 +210,11 @@ void GLTexture::Load( const char* fileName, int filter )
 		for (uint x = 0; x < width; x++) data[y * width + x] = (line[x * 3 + 0] << 16) + (line[x * 3 + 1] << 8) + line[x * 3 + 2];
 	}
 	FreeImage_Unload( dib );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter );
-	glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
-	delete data;
-	delete line;
+	glTexParameteri( textureType, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+	glTexParameteri( textureType, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+	glTexParameteri( textureType, GL_TEXTURE_MAG_FILTER, filter );
+	glTexParameteri( textureType, GL_TEXTURE_MIN_FILTER, filter );
+	glTexImage2D( textureType, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
 	CheckGL();
 }
 
@@ -481,18 +323,6 @@ void Shader::SetInputMatrix( const char* name, const mat4& matrix )
 void Shader::SetFloat( const char* name, const float v )
 {
 	glUniform1f( glGetUniformLocation( ID, name ), v );
-	CheckGL();
-}
-
-void Shader::SetFloat3( const char* name, const float3 v )
-{
-	glUniform3f( glGetUniformLocation( ID, name ), v.x, v.y, v.z );
-	CheckGL();
-}
-
-void Shader::SetFloat4( const char* name, const float4 v )
-{
-	glUniform4f( glGetUniformLocation( ID, name ), v.x, v.y, v.z, v.w );
 	CheckGL();
 }
 

@@ -1,4 +1,4 @@
-/* host_texture.h - Copyright 2019/2021 Utrecht University
+/* host_texture.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ class HostTexture
 public:
 	enum
 	{
+		HASALPHA = 1,
 		NORMALMAP = 2,
 		LDR = 4,
 		HDR = 8
@@ -46,8 +47,7 @@ public:
 	{
 		LINEARIZED = 1,
 		FLIPPED = 2,
-		INVERTED = 4,
-		GAMMACORRECTION = 8,
+		INVERTED = 4
 	};
 	// constructor / destructor / conversion
 	HostTexture() = default;
@@ -56,9 +56,7 @@ public:
 	// methods
 	bool Equals( const string& o, const uint m );
 	void Load( const char* fileName, const uint modFlags, bool normalMap = false );
-	static void sRGBtoLinear( uchar* pixels, const uint size, const uint stride );
-	static float InverseGammaCorrect( float value );
-	static float4 InverseGammaCorrect( const float4& value );
+	void sRGBtoLinear( uchar* pixels, const uint size, const uint stride );
 	void BumpToNormalMap( float heightScale );
 	uint* GetLDRPixels() { return (uint*)idata; }
 	float4* GetHDRPixels() { return fdata; }

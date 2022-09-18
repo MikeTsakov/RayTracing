@@ -1,4 +1,4 @@
-/* common_settings.h - Copyright 2019/2021 Utrecht University
+/* common_settings.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
    limitations under the License.
 
    The settings and classes in this file are global:
-   - available in host and device code
+   - avilable in host and device code
    - the same for each core.
    Settings that can be configured per core can be found in core_settings.h.
 */
@@ -22,10 +22,26 @@
 
 // global settings
 #define CACHEIMAGES					// imported images will be saved to bin files (faster)
+// #define ZIPIMGBINS				// cached images will be zipped (slower but smaller)
 
 // default screen size
 #define SCRWIDTH			1280
-#define SCRHEIGHT			768
+#define SCRHEIGHT			720
+#define DEFAULTCAMERAPOSITION float3({0, 0, 11.994759})
+#define DEFAULTCAMERADIRECTION float3({-0.0029208283, -0.021947961, -0.99975485})
+#define DIRECTIONALCAMERAPOSITION float3({0, 5, 11.994759})
+#define DIELECTRICCAMERAPOSITION float3({8.0302057f, 0.43783143, -6.3139606})
+#define DIELECTRICCAMERADIRECTION float3({-0.57642096, -0.01068913, 0.817083})
+#define DEFAULTFOV 90.0f
+#define TESTTYPE TestType::WHITTED
+enum TestType {
+	NONE,
+	WHITTED,
+	SPOTLIGHT,
+	DIRECTIONALLIGHT,
+	AREALIGHT,
+	DIELECTRIC
+};
 
 // skydome defines
 // #define IBL						// calculate pdf and cdf for ibl renderer
@@ -35,13 +51,10 @@
 #define IBLWBITS			9
 #define IBLHBITS			8
 
-// PNEE settings
-#define PHOTONCOUNT			5000000
-#define GRIDDIMX			128
-#define GRIDDIMY			128
-#define GRIDDIMZ			128
-#define CDFSIZE				16		// Note: CUDA code assumes 16 (hardcoded)
-#define CDFFLOOR			0.1f
+// low discrepancy sampling
+#define LDSETS				256		// number of full low discrepancy sets
+#define LDDIMENSIONS		16		// number of dimensions per ld set
+#define LDSAMPLES			128		// number of samples per pixel before we start using random floats
 
 // low level settings
 #define PI					3.14159265358979323846264f
@@ -73,18 +86,5 @@
 #define REPORTNAN_FLOAT3(a)	{if(isnan(a.x+a.y+a.z))printf("getting NaNs here!");}
 #define REPORTNAN_FLOAT4(a)	{if(isnan(a.x+a.y+a.z))printf("getting NaNs here!");}
 #endif
-
-// Get the log2 for an integer using the preprocessor.
-// https://stackoverflow.com/questions/27581671/how-to-compute-log-with-the-preprocessor
-#define NB_(N,B) (((unsigned long)N >> B) > 0)
-#define BITS_TO_REPRESENT( N )                                       \
-        (NB_((N),  0) + NB_((N),  1) + NB_((N),  2) + NB_((N),  3) + \
-         NB_((N),  4) + NB_((N),  5) + NB_((N),  6) + NB_((N),  7) + \
-         NB_((N),  8) + NB_((N),  9) + NB_((N), 10) + NB_((N), 11) + \
-         NB_((N), 12) + NB_((N), 13) + NB_((N), 14) + NB_((N), 15) + \
-         NB_((N), 16) + NB_((N), 17) + NB_((N), 18) + NB_((N), 19) + \
-         NB_((N), 20) + NB_((N), 21) + NB_((N), 22) + NB_((N), 23) + \
-         NB_((N), 24) + NB_((N), 25) + NB_((N), 26) + NB_((N), 27) + \
-         NB_((N), 28) + NB_((N), 29) + NB_((N), 30) + NB_((N), 31) )
 
 // EOF

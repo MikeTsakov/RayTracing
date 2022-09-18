@@ -1,4 +1,4 @@
-/* rendercore.cpp - Copyright 2019/2021 Utrecht University
+/* rendercore.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -302,7 +302,7 @@ void RenderCore::CreateDescriptorSets()
 	shadeDescriptorSet->AddBinding( cTEXTURE_ARGB128, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
 	shadeDescriptorSet->AddBinding( cTEXTURE_NRM32, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
 	shadeDescriptorSet->AddBinding( cACCUMULATION_BUFFER, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
-	shadeDescriptorSet->AddBinding( cTRILIGHT_BUFFER, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
+	shadeDescriptorSet->AddBinding( cAREALIGHT_BUFFER, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
 	shadeDescriptorSet->AddBinding( cPOINTLIGHT_BUFFER, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
 	shadeDescriptorSet->AddBinding( cSPOTLIGHT_BUFFER, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
 	shadeDescriptorSet->AddBinding( cDIRECTIONALLIGHT_BUFFER, 1, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute );
@@ -378,7 +378,7 @@ void RenderCore::CreateBuffers()
 	shadeDescriptorSet->Bind( cCOUNTERS, { m_Counters->GetDescriptorBufferInfo() } );
 	shadeDescriptorSet->Bind( fUNIFORM_CONSTANTS, { m_UniformFinalizeParams->GetDescriptorBufferInfo() } );
 
-	m_Materials = new VulkanCoreBuffer<VulkanMaterial>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
+	m_Materials = new VulkanCoreBuffer<CoreMaterial>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
 	m_InstanceMeshMappingBuffer = new VulkanCoreBuffer<uint32_t>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal,
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst, ON_HOST | ON_DEVICE );
 
@@ -396,7 +396,7 @@ void RenderCore::CreateBuffers()
 	m_CombinedStateBuffer[1] = new VulkanCoreBuffer<float4>( m_Device, NEXTMULTIPLEOF( m_ScrWidth * m_ScrHeight * 4, limits.minUniformBufferOffsetAlignment ), vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer );
 
 	// Light buffers
-	m_TriLightBuffer = new VulkanCoreBuffer<CoreLightTri>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
+	m_AreaLightBuffer = new VulkanCoreBuffer<CoreLightTri>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
 	m_PointLightBuffer = new VulkanCoreBuffer<CorePointLight>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
 	m_SpotLightBuffer = new VulkanCoreBuffer<CoreSpotLight>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
 	m_DirectionalLightBuffer = new VulkanCoreBuffer<CoreDirectionalLight>( m_Device, 1, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
@@ -535,7 +535,7 @@ void RenderCore::SetTarget( GLTexture *target, const uint spp )
 //  |  RenderCore::SetGeometry                                                    |
 //  |  Set the geometry data for a model.                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetGeometry( const int meshIdx, const float4 *vertexData, const int vertexCount, const int triangleCount, const CoreTri *triangles )
+void RenderCore::SetGeometry( const int meshIdx, const float4 *vertexData, const int vertexCount, const int triangleCount, const CoreTri *triangles, const uint *alphaFlags )
 {
 	if (meshIdx >= m_Meshes.size())
 	{
@@ -543,7 +543,7 @@ void RenderCore::SetGeometry( const int meshIdx, const float4 *vertexData, const
 		m_MeshChanged.push_back( false );
 	}
 
-	m_Meshes[meshIdx]->SetGeometry( vertexData, vertexCount, triangleCount, triangles );
+	m_Meshes[meshIdx]->SetGeometry( vertexData, vertexCount, triangleCount, triangles, alphaFlags );
 	m_MeshChanged[meshIdx] = true;
 }
 
@@ -777,54 +777,35 @@ void RenderCore::SetTextures( const CoreTexDesc *tex, const int textures )
 //  |  RenderCore::SetMaterials                                                   |
 //  |  Set the material data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-#define TOCHAR(a) ((uint)((a)*255.0f))
-#define TOUINT4(a,b,c,d) (TOCHAR(a)+(TOCHAR(b)<<8)+(TOCHAR(c)<<16)+(TOCHAR(d)<<24))
-void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
+void RenderCore::SetMaterials( CoreMaterial *mat, const CoreMaterialEx *matEx, const int materialCount )
 {
-	// Notes:
-	// Call this after the textures have been set; CoreMaterials store the offset of each texture
-	// in the continuous arrays; this data is valid only when textures are in sync.
 	delete m_Materials;
-	std::vector<VulkanMaterial> materialData( materialCount );
+	std::vector<CoreMaterial> materialData( materialCount );
 	materialData.resize( materialCount );
+	memcpy( materialData.data(), mat, materialCount * sizeof( CoreMaterial ) );
+
 	const std::vector<CoreTexDesc> &texDescs = m_TexDescs;
+
 	for (int i = 0; i < materialCount; i++)
 	{
-		// perform conversion to internal material format
-		CoreMaterial& m = mat[i];
-		VulkanMaterial& gpuMat = materialData[i];
-		memset( &gpuMat, 0, sizeof( VulkanMaterial ) );
-		gpuMat.diffuse_r = m.color.value.x,
-		gpuMat.diffuse_g = m.color.value.y;
-		gpuMat.diffuse_b = m.color.value.z;
-		gpuMat.transmittance_r = 1 - m.absorption.value.x;
-		gpuMat.transmittance_g = 1 - m.absorption.value.y;
-		gpuMat.transmittance_b = 1 - m.absorption.value.z;
-		gpuMat.parameters.x = TOUINT4( m.metallic.value, m.subsurface.value, m.specular.value, m.roughness.value );
-		gpuMat.parameters.y = TOUINT4( m.specularTint.value, m.anisotropic.value, m.sheen.value, m.sheenTint.value );
-		gpuMat.parameters.z = TOUINT4( m.clearcoat.value, m.clearcoatGloss.value, m.transmission.value, 0 );
-		gpuMat.parameters.w = *((uint*)&m.eta);
-		if (m.color.textureID != -1) gpuMat.tex0 = Map<CoreMaterial::Vec3Value>( m.color );
-		if (m.detailColor.textureID != -1) gpuMat.tex1 = Map<CoreMaterial::Vec3Value>( m.detailColor );
-		if (m.normals.textureID != -1) gpuMat.nmap0 = Map<CoreMaterial::Vec3Value>( m.normals );
-		if (m.detailNormals.textureID != -1) gpuMat.nmap1 = Map<CoreMaterial::Vec3Value>( m.detailNormals );
-		if (m.roughness.textureID != -1) gpuMat.rmap = Map<CoreMaterial::ScalarValue>( m.roughness );
-		if (m.specular.textureID != -1) gpuMat.smap = Map<CoreMaterial::ScalarValue>( m.specular );
-		bool hdr = false;
-		if (m.color.textureID != -1) if (texDescs[m.color.textureID].flags & 8 /* HostTexture::HDR */) hdr = true;
-		gpuMat.flags =
-			(m.eta.value < 1 ? ISDIELECTRIC : 0) + (hdr ? DIFFUSEMAPISHDR : 0) +
-			(m.color.textureID != -1 ? HASDIFFUSEMAP : 0) +
-			(m.normals.textureID != -1 ? HASNORMALMAP : 0) +
-			(m.specular.textureID != -1 ? HASSPECULARITYMAP : 0) +
-			(m.roughness.textureID != -1 ? HASROUGHNESSMAP : 0) +
-			(m.detailNormals.textureID != -1 ? HAS2NDNORMALMAP : 0) +
-			(m.detailColor.textureID != -1 ? HAS2NDDIFFUSEMAP : 0) +
-			((m.flags & 1) ? HASSMOOTHNORMALS : 0) + ((m.flags & 2) ? HASALPHA : 0);
+		CoreMaterial &mat = materialData.at( i );
+		const CoreMaterialEx &ids = matEx[i];
+		if (ids.texture[0] != -1)
+			mat.texaddr0 = texDescs[ids.texture[0]].firstPixel;
+		if (ids.texture[1] != -1) mat.texaddr1 = texDescs[ids.texture[1]].firstPixel;
+		if (ids.texture[2] != -1) mat.texaddr2 = texDescs[ids.texture[2]].firstPixel;
+		if (ids.texture[3] != -1) mat.nmapaddr0 = texDescs[ids.texture[3]].firstPixel;
+		if (ids.texture[4] != -1) mat.nmapaddr1 = texDescs[ids.texture[4]].firstPixel;
+		if (ids.texture[5] != -1) mat.nmapaddr2 = texDescs[ids.texture[5]].firstPixel;
+		if (ids.texture[6] != -1) mat.smapaddr = texDescs[ids.texture[6]].firstPixel;
+		if (ids.texture[7] != -1) mat.rmapaddr = texDescs[ids.texture[7]].firstPixel;
+		//if ( ids.texture[8] != -1 ) mat.texaddr0 = texDescs[ids.texture[8]].firstPixel; // second roughness map is not used
+		if (ids.texture[9] != -1) mat.cmapaddr = texDescs[ids.texture[9]].firstPixel;
+		if (ids.texture[10] != -1) mat.amapaddr = texDescs[ids.texture[10]].firstPixel;
 	}
 
-	m_Materials = new VulkanCoreBuffer<VulkanMaterial>( m_Device, materialCount, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
-	m_Materials->CopyToDevice( materialData.data(), materialCount * sizeof( VulkanMaterial ) );
+	m_Materials = new VulkanCoreBuffer<CoreMaterial>( m_Device, materialCount, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
+	m_Materials->CopyToDevice( materialData.data(), materialCount * sizeof( CoreMaterial ) );
 
 	shadeDescriptorSet->Bind( cMATERIALS, { m_Materials->GetDescriptorBufferInfo() } );
 }
@@ -833,7 +814,7 @@ void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
 //  |  RenderCore::SetLights                                                      |
 //  |  Set the light data.                                                  LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetLights( const CoreLightTri *triLights, const int triLightCount,
+void RenderCore::SetLights( const CoreLightTri *areaLights, const int areaLightCount,
 	const CorePointLight *pointLights, const int pointLightCount,
 	const CoreSpotLight *spotLights, const int spotLightCount,
 	const CoreDirectionalLight *directionalLights, const int directionalLightCount )
@@ -844,15 +825,15 @@ void RenderCore::SetLights( const CoreLightTri *triLights, const int triLightCou
 	static_assert(sizeof( CoreDirectionalLight ) == sizeof( CoreDirectionalLight4 ));
 
 	m_LightCounts = make_uint4(
-		std::max( triLightCount, 1 ),
+		std::max( areaLightCount, 1 ),
 		std::max( pointLightCount, 1 ),
 		std::max( spotLightCount, 1 ),
 		std::max( directionalLightCount, 1 ) );
 
-	if (m_TriLightBuffer->GetSize() < (triLightCount * sizeof( CoreLightTri4 )))
+	if (m_AreaLightBuffer->GetSize() < (areaLightCount * sizeof( CoreLightTri4 )))
 	{
-		delete m_TriLightBuffer;
-		m_TriLightBuffer = new VulkanCoreBuffer<CoreLightTri>( m_Device, m_LightCounts.x, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
+		delete m_AreaLightBuffer;
+		m_AreaLightBuffer = new VulkanCoreBuffer<CoreLightTri>( m_Device, m_LightCounts.x, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst );
 	}
 	if (m_PointLightBuffer->GetSize() < (pointLightCount * sizeof( CorePointLight4 )))
 	{
@@ -871,13 +852,13 @@ void RenderCore::SetLights( const CoreLightTri *triLights, const int triLightCou
 	}
 
 	// Copy to device in case lights exist
-	if (triLightCount > 0) m_TriLightBuffer->CopyToDevice( triLights, m_TriLightBuffer->GetSize() );
+	if (areaLightCount > 0) m_AreaLightBuffer->CopyToDevice( areaLights, m_AreaLightBuffer->GetSize() );
 	if (pointLightCount > 0) m_PointLightBuffer->CopyToDevice( pointLights, m_PointLightBuffer->GetSize() );
 	if (spotLightCount > 0) m_SpotLightBuffer->CopyToDevice( spotLights, m_SpotLightBuffer->GetSize() );
 	if (directionalLightCount > 0) m_DirectionalLightBuffer->CopyToDevice( directionalLights, m_DirectionalLightBuffer->GetSize() );
 
 	// Update descriptor set
-	shadeDescriptorSet->Bind( cTRILIGHT_BUFFER, { m_TriLightBuffer->GetDescriptorBufferInfo() } );
+	shadeDescriptorSet->Bind( cAREALIGHT_BUFFER, { m_AreaLightBuffer->GetDescriptorBufferInfo() } );
 	shadeDescriptorSet->Bind( cPOINTLIGHT_BUFFER, { m_PointLightBuffer->GetDescriptorBufferInfo() } );
 	shadeDescriptorSet->Bind( cSPOTLIGHT_BUFFER, { m_SpotLightBuffer->GetDescriptorBufferInfo() } );
 	shadeDescriptorSet->Bind( cDIRECTIONALLIGHT_BUFFER, { m_DirectionalLightBuffer->GetDescriptorBufferInfo() } );
@@ -887,7 +868,7 @@ void RenderCore::SetLights( const CoreLightTri *triLights, const int triLightCou
 //  |  RenderCore::SetSkyData                                                     |
 //  |  Set the sky dome data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetSkyData( const float3 *pixels, const uint width, const uint height, const mat4& /* worldToLight */ )
+void RenderCore::SetSkyData( const float3 *pixels, const uint width, const uint height )
 {
 	std::vector<float4> data( size_t( width * height ) );
 	for (uint i = 0; i < (width * height); i++) data[i] = make_float4( pixels[i].x, pixels[i].y, pixels[i].z, 0.0f );
@@ -931,7 +912,7 @@ void RenderCore::Setting( const char *name, const float value )
 //  |  RenderCore::Render                                                         |
 //  |  Produce one image.                                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::Render( const ViewPyramid &view, const Convergence converge, bool async )
+void RenderCore::Render( const ViewPyramid &view, const Convergence converge )
 {
 	VulkanCamera &camera = m_UniformCamera->GetData()[0];
 	Counters &c = m_Counters->GetHostBuffer()[0];
@@ -1175,7 +1156,7 @@ void RenderCore::Shutdown()
 
 	if (m_InvTransformsBuffer) delete m_InvTransformsBuffer;
 
-	if (m_TriLightBuffer) delete m_TriLightBuffer;
+	if (m_AreaLightBuffer) delete m_AreaLightBuffer;
 	if (m_PointLightBuffer) delete m_PointLightBuffer;
 	if (m_SpotLightBuffer) delete m_SpotLightBuffer;
 	if (m_DirectionalLightBuffer) delete m_DirectionalLightBuffer;
@@ -1194,15 +1175,6 @@ void RenderCore::Shutdown()
 	if (m_InteropTexture) delete m_InteropTexture;
 	if (m_VkDebugMessenger) m_VkInstance.destroyDebugUtilsMessengerEXT( m_VkDebugMessenger, nullptr, dynamicDispatcher );
 	// Vulkan device & Vulkan instance automatically get freed when this class gets destroyed
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::GetCoreStats                                                   |
-//  |  Get a copy of the counters.                                          LH2'19|
-//  +-----------------------------------------------------------------------------+
-CoreStats RenderCore::GetCoreStats() const 
-{
-	return coreStats;
 }
 
 } // namespace lh2core

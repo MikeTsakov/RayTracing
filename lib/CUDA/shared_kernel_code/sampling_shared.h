@@ -1,4 +1,4 @@
-/* sampling_shared.h - Copyright 2019/2021 Utrecht University
+/* sampling_shared.cu - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -39,8 +39,8 @@ LH2_DEVFUNC float4 FetchTexel( const float2 texCoord, const int o, const int w, 
 	const int iu = ((int)tc.x) % w;
 	const int iv = ((int)tc.y) % h;
 #ifdef BILINEAR
-	const float fu = tc.x - floorf( tc.x );
-	const float fv = tc.y - floorf( tc.y );
+	const float fu = tc.x - floor( tc.x );
+	const float fv = tc.y - floor( tc.y );
 	const float w0 = (1 - fu) * (1 - fv);
 	const float w1 = fu * (1 - fv);
 	const float w2 = (1 - fu) * fv;
@@ -72,13 +72,9 @@ LH2_DEVFUNC float4 FetchTexel( const float2 texCoord, const int o, const int w, 
 
 LH2_DEVFUNC float4 FetchTexelTrilinear( const float lambda, const float2 texCoord, const int offset, const int width, const int height )
 {
-	int level0 = 0, level1 = 0;
-	float f = 0;
-	if (lambda >= 0)
-		level0 = min( MIPLEVELCOUNT - 1, (int)lambda ),
-		level1 = min( MIPLEVELCOUNT - 1, level0 + 1 ),
-		f = lambda - floorf( lambda );
-#if 0
+	const int level0 = min( MIPLEVELCOUNT - 1, (int)lambda );
+	const int level1 = min( MIPLEVELCOUNT - 1, level0 + 1 );
+	const float f = lambda - floor( lambda );
 	// select first MIP level
 	int o0 = offset, w0 = width, h0 = height;
 	for (int i = 0; i < level0; i++) o0 += w0 * h0, w0 >>= 1, h0 >>= 1;
@@ -88,17 +84,6 @@ LH2_DEVFUNC float4 FetchTexelTrilinear( const float lambda, const float2 texCoor
 	// read actual data
 	const float4 p0 = FetchTexel( texCoord, o0, w0, h0 );
 	const float4 p1 = FetchTexel( texCoord, o1, w1, h1 );
-#else
-	// as proposed by Marvin Reza, slightly faster
-	const float scale = (float)(width * height) * 1.3333333333f;
-	// const int o0 = offset + (int)(mip0Size * (1.0f - exp2f( -2.0f * level0 )) * 1.333333333f);
-	// const int o1 = offset + (int)(mip0Size * (1.0f - exp2f( -2.0f * level1 )) * 1.333333333f);
-	const int o0 = offset + (int)(scale * (1 - __uint_as_float( (127 - 2 * level0) << 23 )));
-	const int o1 = offset + (int)(scale * (1 - __uint_as_float( (127 - 2 * level1) << 23 )));
-	// read actual data
-	const float4 p0 = FetchTexel( texCoord, o0, width >> level0, height >> level0 );
-	const float4 p1 = FetchTexel( texCoord, o1, width >> level1, height >> level1 );
-#endif
 	// final interpolation
 	return (1 - f) * p0 + f * p1;
 }
@@ -139,9 +124,9 @@ LH2_DEVFUNC float4 ReadTexelConsistent( const float4* buffer, const float4* prev
 	// part of reprojection:
 	// read a texel from the specified history buffer with bilinear interpolation,
 	// while checking each tap for consistentency (similar world space position and normal).
-	const int iu1 = (int)floorf( u ), iv1 = (int)floorf( v ), iu0 = max( 0, iu1 - 1 ), iv0 = max( 0, iv1 - 1 );
+	const int iu1 = (int)floor( u ), iv1 = (int)floor( v ), iu0 = max( 0, iu1 - 1 ), iv0 = max( 0, iv1 - 1 );
 	if (iu1 >= w || iv1 >= h || iu1 < 0 || iv1 < 0) return make_float4( -1 );
-	const float2 fuv = make_float2( u - floorf( u ), v - floorf( v ) );
+	const float2 fuv = make_float2( u - floor( u ), v - floor( v ) );
 	const float4 p0 = buffer[iu0 + iv0 * w], pp0 = prevWorldPos[iu0 + iv0 * w];
 	const float4 p1 = buffer[iu1 + iv0 * w], pp1 = prevWorldPos[iu1 + iv0 * w];
 	const float4 p2 = buffer[iu0 + iv1 * w], pp2 = prevWorldPos[iu0 + iv1 * w];
@@ -183,9 +168,9 @@ LH2_DEVFUNC void ReadTexelConsistent2( const float4* buffer, const float4* prevW
 	// while checking each tap for consistentency (similar world space position and normal).
 	// this version interpolates and returns two values (for direct and indirect light).
 	direct.x = -1;
-	const int iu1 = (int)floorf( u ), iv1 = (int)floorf( v ), iu0 = max( 0, iu1 - 1 ), iv0 = max( 0, iv1 - 1 );
+	const int iu1 = (int)floor( u ), iv1 = (int)floor( v ), iu0 = max( 0, iu1 - 1 ), iv0 = max( 0, iv1 - 1 );
 	if (iu1 >= w || iv1 >= h || iu1 < 0 || iv1 < 0) return;
-	const float2 fuv = make_float2( u - floorf( u ), v - floorf( v ) );
+	const float2 fuv = make_float2( u - floor( u ), v - floor( v ) );
 	const float4 p0 = buffer[iu0 + iv0 * w], pp0 = prevWorldPos[iu0 + iv0 * w], pd0 = make_float4( GetDirectFromFloat4( p0 ), 1 ), pi0 = make_float4( GetIndirectFromFloat4( p0 ) );
 	const float4 p1 = buffer[iu1 + iv0 * w], pp1 = prevWorldPos[iu1 + iv0 * w], pd1 = make_float4( GetDirectFromFloat4( p1 ), 1 ), pi1 = make_float4( GetIndirectFromFloat4( p1 ) );
 	const float4 p2 = buffer[iu0 + iv1 * w], pp2 = prevWorldPos[iu0 + iv1 * w], pd2 = make_float4( GetDirectFromFloat4( p2 ), 1 ), pi2 = make_float4( GetIndirectFromFloat4( p2 ) );
@@ -219,27 +204,67 @@ LH2_DEVFUNC void ReadTexelConsistent2( const float4* buffer, const float4* prevW
 	indirect = make_float3( w0 * pi0 + w1 * pi1 + w2 * pi2 + w3 * pi3 ) * (1.0f / sum);
 }
 
-LH2_DEVFUNC float3 SampleCoreTexture( const CoreMaterial::Vec3Value& v, float2 uv )
+#if 0
+
+template <typename T>
+__device__ T CoreTexture<T>::Evaluate( float2 uv ) const
 {
-	// TODO: Trilinear
-	if (v.textureID != -1)
+	switch ( type )
 	{
-		uv = v.uvscale * (v.uvoffset + uv);
-		// textureID represents the offset on the device:
-		return make_float3( FetchTexel( uv, v.textureID, v.size.x, v.size.y ) );
+	case Constant:
+		return constant;
+	case Imagemap:
+		if ( imagemap.trilinear )
+			return FetchTexelTrilinear(
+				0, uv,
+				imagemap.textureOffset,
+				imagemap.width,
+				imagemap.height );
+		else
+			return FetchTexel(
+				uv,
+				imagemap.textureOffset,
+				imagemap.width,
+				imagemap.height );
 	}
-
-	return v.value;
+	return T{};
 }
 
-LH2_DEVFUNC float SampleCoreTexture( const CoreMaterial::ScalarValue& v, float2 uv )
+template <>
+__device__ float CoreTexture<float>::Evaluate( float2 uv ) const
 {
-	// TODO: Trilinear
-
-	// TODO:
-	// if (v.textureID != -1)
-
-	return v.value;
+	switch ( type )
+	{
+	case Constant:
+		return constant;
+	}
+	return 0.f;
 }
+
+template <>
+__device__ float3 CoreTexture<float3>::Evaluate( float2 uv ) const
+{
+	switch ( type )
+	{
+	case Constant:
+		return constant;
+	case Imagemap:
+		return make_float3(
+			imagemap.trilinear
+				? FetchTexelTrilinear(
+					  0, uv,
+					  imagemap.textureOffset,
+					  imagemap.width,
+					  imagemap.height )
+				: FetchTexel(
+					  uv,
+					  imagemap.textureOffset,
+					  imagemap.width,
+					  imagemap.height ) );
+	}
+	return make_float3( 0.f );
+}
+
+#endif
 
 // EOF

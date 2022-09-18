@@ -1,4 +1,4 @@
-/* core_mesh.h - Copyright 2019/2021 Utrecht University
+/* core_mesh.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ public:
 	~CoreMesh();
 
 	void Cleanup();
-	void SetGeometry( const float4 *vertexData, const int vertexCount, const int triCount, const CoreTri *tris );
+	void SetGeometry( const float4 *vertexData, const int vertexCount, const int triCount, const CoreTri *tris, const uint *alphaFlags = 0 );
 
 	VulkanCoreBuffer<CoreTri> *triangles = nullptr;
 	BottomLevelAS *accelerationStructure = nullptr;

@@ -1,7 +1,7 @@
 rem | This file deletes all files that can be regenerated with 
 rem | a rebuild / run in VS2017. Execute this when archiving, 
 rem | handing in assignments etc.
-rem | Make sure VS is *closed* for best results.
+rem | Make sure VS2017 is *closed* for best results.
 
 del *.suo /Q
 del *.suo /AH /Q
@@ -13,38 +13,38 @@ rem | Clean up RenderCore folders
 
 rd lib\RenderCore_Minimal\lib /S /Q
 rd lib\RenderCore_Minimal\x64 /S /Q
+rd lib\RenderCore_OptixPrime\lib /S /Q
+rd lib\RenderCore_OptixPrime\x64 /S /Q
 rd lib\RenderCore_PrimeRef\lib /S /Q
 rd lib\RenderCore_PrimeRef\x64 /S /Q
 rd lib\RenderCore_OptixPrime_B\lib /S /Q
 rd lib\RenderCore_OptixPrime_B\x64 /S /Q
-rd lib\RenderCore_PrimeAdaptive\lib /S /Q
-rd lib\RenderCore_PrimeAdaptive\x64 /S /Q
-rd lib\RenderCore_Optix7Adaptive\lib /S /Q
-rd lib\RenderCore_Optix7Adaptive\x64 /S /Q
+rd lib\RenderCore_OptixRTX\lib /S /Q
+rd lib\RenderCore_OptixRTX\x64 /S /Q
+del lib\RenderCore_OptixRTX\optix\*.ptx /S /Q
 rd lib\RenderCore_OptixRTX_B\lib /S /Q
 rd lib\RenderCore_OptixRTX_B\x64 /S /Q
 del lib\RenderCore_OptixRTX_B\optix\*.ptx /S /Q
 rd lib\RenderCore_OptixPrime_BDPT\lib /S /Q
 rd lib\RenderCore_OptixPrime_BDPT\x64 /S /Q
-rd lib\RenderCore_OptixPrime_PBRT\lib /S /Q
-rd lib\RenderCore_OptixPrime_PBRT\x64 /S /Q
 del lib\RenderCore_OptixPrime_BDPT\optix\*.ptx /S /Q
 rd lib\RenderCore_Optix7\lib /S /Q
 rd lib\RenderCore_Optix7\x64 /S /Q
-rd lib\RenderCore_Optix7Guiding\lib /S /Q
-rd lib\RenderCore_Optix7Guiding\x64 /S /Q
 del lib\RenderCore_Optix7\optix\*.ptx /S /Q
 rd lib\RenderCore_Optix7Filter\lib /S /Q
 rd lib\RenderCore_Optix7Filter\x64 /S /Q
 del lib\RenderCore_Optix7Filter\optix\*.ptx /S /Q
 rd lib\RenderCore_SoftRasterizer\lib /S /Q
 rd lib\RenderCore_SoftRasterizer\x64 /S /Q
+rd lib\RenderCore_RTX_AO\lib /S /Q
+rd lib\RenderCore_RTX_AO\x64 /S /Q
+del lib\RenderCore_RTX_AO\optix\*.ptx /S /Q
 rd lib\RenderCore_OpenCL\lib /S /Q
 rd lib\RenderCore_OpenCL\x64 /S /Q
 rd lib\RenderCore_Embree\x64 /S /Q
 rd lib\RenderCore_Embree\lib /S /Q
-rd lib\RenderCore_Vulkan_RT\lib /S /Q
-rd lib\RenderCore_Vulkan_RT\x64 /S /Q
+rd lib\RenderCore_vulkan_rt\lib /S /Q
+rd lib\RenderCore_vulkan_rt\x64 /S /Q
 rd coredlls\debug /S /Q
 rd coredlls\release /S /Q
 
@@ -53,7 +53,6 @@ rem | Clean up applications
 rd apps\ai_debugger\x64 /S /Q
 del apps\ai_debugger\data\textures\*.bin
 del apps\ai_debugger\data\sky_15.bin
-del apps\_shareddata\sky_15.bin
 del apps\ai_debugger\*.exe /Q
 del apps\ai_debugger\*.iobj /Q
 del apps\ai_debugger\*.ipdb /Q
@@ -107,28 +106,6 @@ del apps\imguiapp\*.pdb /Q
 del apps\imguiapp\*.ilk /Q
 del apps\imguiapp\*.exp /Q
 del apps\imguiapp\*.lib /Q
-rd apps\viewerapp\x64 /S /Q
-del apps\viewerapp\data\textures\*.bin
-del apps\viewerapp\data\mattest\textures\*.bin
-del apps\viewerapp\data\sky_15.bin
-del apps\viewerapp\*.exe /Q
-del apps\viewerapp\*.iobj /Q
-del apps\viewerapp\*.ipdb /Q
-del apps\viewerapp\*.pdb /Q
-del apps\viewerapp\*.ilk /Q
-del apps\viewerapp\*.exp /Q
-del apps\viewerapp\*.lib /Q
-rd apps\benchmarkapp\x64 /S /Q
-del apps\benchmarkapp\data\textures\*.bin
-del apps\benchmarkapp\data\mattest\textures\*.bin
-del apps\benchmarkapp\data\sky_15.bin
-del apps\benchmarkapp\*.exe /Q
-del apps\benchmarkapp\*.iobj /Q
-del apps\benchmarkapp\*.ipdb /Q
-del apps\benchmarkapp\*.pdb /Q
-del apps\benchmarkapp\*.ilk /Q
-del apps\benchmarkapp\*.exp /Q
-del apps\benchmarkapp\*.lib /Q
 rd apps\rtxbvhreveng\x64 /S /Q
 del apps\rtxbvhreveng\data\sky_15.bin
 del apps\rtxbvhreveng\*.exe /Q
@@ -147,18 +124,6 @@ del apps\tinyapplua\*.pdb /Q
 del apps\tinyapplua\*.ilk /Q
 del apps\tinyapplua\*.exp /Q
 del apps\tinyapplua\*.lib /Q
-rd apps\pbrtdemoapp\x64 /S /Q
-del apps\pbrtdemoapp\data\textures\*.bin
-del apps\pbrtdemoapp\data\mattest\textures\*.bin
-del apps\pbrtdemoapp\data\sky_15.bin
-del apps\pbrtdemoapp\*.exe /Q
-del apps\pbrtdemoapp\*.iobj /Q
-del apps\pbrtdemoapp\*.ipdb /Q
-del apps\pbrtdemoapp\*.pdb /Q
-del apps\pbrtdemoapp\*.ilk /Q
-del apps\pbrtdemoapp\*.exp /Q
-del apps\pbrtdemoapp\*.lib /Q
-
 rem | Clean up other components
 
 rd lib\RenderSystem\lib /S /Q

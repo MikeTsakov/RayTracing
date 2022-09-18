@@ -1,4 +1,4 @@
-/* bindings.h - Copyright 2019/2021 Utrecht University
+/* bindings.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@
 #define cTEXTURE_NRM32 14
 #define cACCUMULATION_BUFFER 15
 #define cACCUMULATION_BUFFER 15
-#define cTRILIGHT_BUFFER 16
+#define cAREALIGHT_BUFFER 16
 #define	cPOINTLIGHT_BUFFER 17
 #define cSPOTLIGHT_BUFFER 18
 #define cDIRECTIONALLIGHT_BUFFER 19

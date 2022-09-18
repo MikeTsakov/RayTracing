@@ -1,4 +1,4 @@
-/* host_mesh.cpp - Copyright 2019/2021 Utrecht University
+/* host_mesh.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -80,9 +80,9 @@ HostMesh::HostMesh( const char* file, const char* dir, const float scale, const 
 	LoadGeometry( file, dir, scale, flatShaded );
 }
 
-HostMesh::HostMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const vector<int>& matIdx, const int materialOverride )
+HostMesh::HostMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const int matIdxOffset, const int materialOverride )
 {
-	ConvertFromGTLFMesh( gltfMesh, gltfModel, matIdx, materialOverride );
+	ConvertFromGTLFMesh( gltfMesh, gltfModel, matIdxOffset, materialOverride );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -94,7 +94,7 @@ HostMesh::~HostMesh()
 	// TODO: warn if instances using this mesh still exist?
 	// And in general, do we want a two-way link between related objects?
 	// - Materials and meshes;
-	// - HostTriLights and HostTris;
+	// - HostAreaLights and HostTris;
 	// - Meshes and instances;
 	// - Materials and textures;
 	// - ...
@@ -139,7 +139,7 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 	Timer timer;
 	timer.reset();
 	tinyobj::LoadObj( &attrib, &shapes, &materials, &err, &warn, fileName.c_str(), directory );
-	FATALERROR_IF( err.size() > 0 || shapes.size() == 0, "tinyobj failed to load %s: %s", fileName.c_str(), err.c_str() );
+	FATALERROR_IF( err.size() > 0, "tinyobj failed to load %s: %s", fileName.c_str(), err.c_str() );
 	printf( "loaded mesh in %5.3fs\n", timer.elapsed() );
 	// material offset: if we loaded an object before this one, material indices should not start at 0.
 	int matIdxOffset = (int)HostScene::materials.size();
@@ -150,7 +150,7 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 	chdir( directory ); // SetCurrentDirectory( directory );
 	materialList.clear();
 	materialList.reserve( materials.size() );
-	for (auto& mtl : materials)
+	for (auto &mtl : materials)
 	{
 		// initialize
 		HostMaterial* material = new HostMaterial();
@@ -158,7 +158,6 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 		material->origin = fileName;
 		material->ConvertFrom( mtl );
 		material->flags |= HostMaterial::FROM_MTL;
-		material->MarkAsDirty();
 		HostScene::materials.push_back( material );
 		materialList.push_back( material->ID );
 	}
@@ -172,32 +171,26 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 	for (uint s = (uint)shapes.size(), i = 0; i < s; i++)
 	{
 		vector<tinyobj::index_t>& indices = shapes[i].mesh.indices;
-		if (flatShaded) for (uint s = (uint)indices.size(), f = 0; f < s; f++) alphas[indices[f].normal_index] = 1; else
-			for (uint s = (uint)indices.size(), f = 0; f < s; f += 3)
-			{
-				const int idx0 = indices[f + 0].vertex_index, nidx0 = indices[f + 0].normal_index;
-				const int idx1 = indices[f + 1].vertex_index, nidx1 = indices[f + 1].normal_index;
-				const int idx2 = indices[f + 2].vertex_index, nidx2 = indices[f + 2].normal_index;
-				const float3 vert0 = make_float3( attrib.vertices[idx0 * 3 + 0], attrib.vertices[idx0 * 3 + 1], attrib.vertices[idx0 * 3 + 2] );
-				const float3 vert1 = make_float3( attrib.vertices[idx1 * 3 + 0], attrib.vertices[idx1 * 3 + 1], attrib.vertices[idx1 * 3 + 2] );
-				const float3 vert2 = make_float3( attrib.vertices[idx2 * 3 + 0], attrib.vertices[idx2 * 3 + 1], attrib.vertices[idx2 * 3 + 2] );
-				float3 N = normalize( cross( vert1 - vert0, vert2 - vert0 ) );
-				float3 vN0, vN1, vN2;
-				if (nidx0 > -1)
-				{
-					vN0 = make_float3( attrib.normals[nidx0 * 3 + 0], attrib.normals[nidx0 * 3 + 1], attrib.normals[nidx0 * 3 + 2] );
-					vN1 = make_float3( attrib.normals[nidx1 * 3 + 0], attrib.normals[nidx1 * 3 + 1], attrib.normals[nidx1 * 3 + 2] );
-					vN2 = make_float3( attrib.normals[nidx2 * 3 + 0], attrib.normals[nidx2 * 3 + 1], attrib.normals[nidx2 * 3 + 2] );
-				if (dot( N, vN0 ) < 0 && dot( N, vN1 ) < 0 && dot( N, vN2 ) < 0) N *= -1.0f; // flip if not consistent with vertex normals
-				alphas[nidx0] = min( alphas[nidx0], max( 0.7f, dot( vN0, N ) ) );
-				alphas[nidx1] = min( alphas[nidx1], max( 0.7f, dot( vN1, N ) ) );
-				alphas[nidx2] = min( alphas[nidx2], max( 0.7f, dot( vN2, N ) ) );
-			}
-				else
-				{
-					vN0 = vN1 = vN2 = N;
-				}
-			}
+		if (flatShaded) for (uint s = (uint)indices.size(), f = 0; f < s; f++ ) alphas[indices[f].normal_index] = 1; else 
+		for (uint s = (uint)indices.size(), f = 0; f < s; f += 3)
+		{
+			const int idx0 = indices[f + 0].vertex_index, nidx0 = indices[f + 0].normal_index;
+			const int idx1 = indices[f + 1].vertex_index, nidx1 = indices[f + 1].normal_index;
+			const int idx2 = indices[f + 2].vertex_index, nidx2 = indices[f + 2].normal_index;
+			const float3 vert0 = make_float3( attrib.vertices[idx0 * 3 + 0], attrib.vertices[idx0 * 3 + 1], attrib.vertices[idx0 * 3 + 2] );
+			const float3 vert1 = make_float3( attrib.vertices[idx1 * 3 + 0], attrib.vertices[idx1 * 3 + 1], attrib.vertices[idx1 * 3 + 2] );
+			const float3 vert2 = make_float3( attrib.vertices[idx2 * 3 + 0], attrib.vertices[idx2 * 3 + 1], attrib.vertices[idx2 * 3 + 2] );
+			float3 vN0 = make_float3( attrib.normals[nidx0 * 3 + 0], attrib.normals[nidx0 * 3 + 1], attrib.normals[nidx0 * 3 + 2] );
+			float3 vN1 = make_float3( attrib.normals[nidx1 * 3 + 0], attrib.normals[nidx1 * 3 + 1], attrib.normals[nidx1 * 3 + 2] );
+			float3 vN2 = make_float3( attrib.normals[nidx2 * 3 + 0], attrib.normals[nidx2 * 3 + 1], attrib.normals[nidx2 * 3 + 2] );
+			float3 N = normalize( cross( vert1 - vert0, vert2 - vert0 ) );
+			if (dot( N, vN0 ) < 0 && dot( N, vN1 ) < 0 && dot( N, vN2 ) < 0) N *= -1.0f; // flip if not consistent with vertex normals
+			// loop over vertices
+			// Note: we clamp at approx. 45 degree angles; beyond this the approach fails.
+			alphas[nidx0] = min( alphas[nidx0], max( 0.7f, dot( vN0, N ) ) );
+			alphas[nidx1] = min( alphas[nidx1], max( 0.7f, dot( vN1, N ) ) );
+			alphas[nidx2] = min( alphas[nidx2], max( 0.7f, dot( vN2, N ) ) );
+		}
 	}
 	// finalize alpha values based on max dots
 	const float w = 0.03632f;
@@ -231,7 +224,7 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 		sceneBounds.Grow( make_float3( tv1 ) );
 		sceneBounds.Grow( make_float3( tv2 ) );
 	}
-	printf( "created polygon soup for %i triangles in %5.3fs\n", (int)vertices.size() / 3, timer.elapsed() );
+	printf( "created polygon soup in %5.3fs\n", timer.elapsed() );
 	printf( "scene bounds: (%5.2f,%5.2f,%5.2f)-(%5.2f,%5.2f,%5.2f)\n",
 		sceneBounds.bmin3.x, sceneBounds.bmin3.y, sceneBounds.bmin3.z,
 		sceneBounds.bmax3.x, sceneBounds.bmax3.y, sceneBounds.bmax3.z );
@@ -250,20 +243,13 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 			const int tidx0 = indices[f + 0].texcoord_index, nidx0 = indices[f + 0].normal_index, idx0 = indices[f + 0].vertex_index;
 			const int tidx1 = indices[f + 1].texcoord_index, nidx1 = indices[f + 1].normal_index, idx1 = indices[f + 1].vertex_index;
 			const int tidx2 = indices[f + 2].texcoord_index, nidx2 = indices[f + 2].normal_index, idx2 = indices[f + 2].vertex_index;
-			const float3 e1 = tri.vertex1 - tri.vertex0;
-			const float3 e2 = tri.vertex2 - tri.vertex0;
-			float3 N = normalize( cross( e1, e2 ) );
-			if (nidx0 > -1)
-			{
 			tri.vN0 = make_float3( attrib.normals[nidx0 * 3 + 0], attrib.normals[nidx0 * 3 + 1], attrib.normals[nidx0 * 3 + 2] );
 			tri.vN1 = make_float3( attrib.normals[nidx1 * 3 + 0], attrib.normals[nidx1 * 3 + 1], attrib.normals[nidx1 * 3 + 2] );
 			tri.vN2 = make_float3( attrib.normals[nidx2 * 3 + 0], attrib.normals[nidx2 * 3 + 1], attrib.normals[nidx2 * 3 + 2] );
+			const float3 e1 = tri.vertex1 - tri.vertex0;
+			const float3 e2 = tri.vertex2 - tri.vertex0;
+			float3 N = normalize( cross( e1, e2 ) );
 			if (dot( N, tri.vN0 ) < 0) N *= -1.0f; // flip face normal if not consistent with vertex normal
-			}
-			else
-			{
-				tri.vN0 = tri.vN1 = tri.vN2 = N;
-			}
 			if (flatShaded) tri.vN0 = tri.vN1 = tri.vN2 = N;
 			if (tidx0 > -1)
 			{
@@ -301,13 +287,10 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 			tri.area = 0; // we don't actually use it, except for lights, where it is also calculated
 		#endif
 			tri.invArea = 0; // todo
-			if (nidx0 > -1) 
 			tri.alpha = make_float3( alphas[nidx0], tri.alpha.y = alphas[nidx1], tri.alpha.z = alphas[nidx2] );
-			else
-				tri.alpha = make_float3( 0 );
 			// calculate triangle LOD data
 			HostMaterial* mat = HostScene::materials[tri.material];
-			int textureID = mat->color.textureID;
+			int textureID = mat->map[TEXTURE0].textureID;
 			if (textureID > -1)
 			{
 				HostTexture* texture = HostScene::textures[textureID];
@@ -324,7 +307,7 @@ void HostMesh::LoadGeometryFromOBJ( const string& fileName, const char* director
 //  |  HostMesh::ConvertFromGTLFMesh                                              |
 //  |  Convert a gltf mesh to a HostMesh.                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const vector<int>& matIdx, const int materialOverride )
+void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const int matIdxOffset, const int materialOverride )
 {
 	const int targetCount = (int)gltfMesh.weights.size();
 	for (auto& prim : gltfMesh.primitives)
@@ -339,9 +322,9 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 		// allocate the index array in the pointer-to-base declared in the parent scope
 		vector<int> tmpIndices;
 		vector<float3> tmpNormals, tmpVertices;
-		vector<float2> tmpUvs, tmpUv2s /* texture layer 2 */;
+		vector<float2> tmpUvs;
 		vector<uint4> tmpJoints;
-		vector<float4> tmpWeights, tmpTs;
+		vector<float4> tmpWeights;
 		switch (accessor.componentType)
 		{
 		case TINYGLTF_COMPONENT_TYPE_BYTE: for (int k = 0; k < count; k++, a += byteStride) tmpIndices.push_back( *((char*)a) ); break;
@@ -403,14 +386,7 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 					else FATALERROR( "double precision normals not supported in gltf file" );
 				else FATALERROR( "expected vec3 normals in gltf file" );
 			}
-			else if (attribute.first == "TANGENT")
-			{
-				if (attribAccessor.type == TINYGLTF_TYPE_VEC4)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpTs.push_back( *((float4*)a) );
-					else FATALERROR( "double precision tangents not supported in gltf file" );
-				else FATALERROR( "expected vec4 uvs in gltf file" );
-			}
+			else if (attribute.first == "TANGENT") /* not yet supported */ continue;
 			else if (attribute.first == "TEXCOORD_0")
 			{
 				if (attribAccessor.type == TINYGLTF_TYPE_VEC2)
@@ -421,11 +397,7 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 			}
 			else if (attribute.first == "TEXCOORD_1")
 			{
-				if (attribAccessor.type == TINYGLTF_TYPE_VEC2)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpUv2s.push_back( *((float2*)a) );
-					else FATALERROR( "double precision uvs not supported in gltf file" );
-				else FATALERROR( "expected vec2 uvs in gltf file" );
+				// TODO; ignored for now.
 			}
 			else if (attribute.first == "COLOR_0")
 			{
@@ -458,22 +430,7 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 					else FATALERROR( "double precision uvs not supported in gltf file" );
 				else FATALERROR( "expected vec4 weights in gltf file" );
 			}
-			else if (attribute.first == "TEXCOORD_2")
-			{
-				// TODO, used in drone
-			}
-			else if (attribute.first == "TEXCOORD_3")
-			{
-				// TODO, used in drone
-			}
-			else if (attribute.first == "TEXCOORD_4")
-			{
-				// TODO, used in drone
-			}
-			else
-			{
-				assert( false ); // unkown property
-			}
+			else assert( false ); // unkown property
 		}
 		// obtain morph targets
 		vector<Pose> tmpPoses;
@@ -506,8 +463,8 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 			}
 		}
 		// all data has been read; add triangles to the HostMesh
-		BuildFromIndexedData( tmpIndices, tmpVertices, tmpNormals, tmpUvs, tmpUv2s, tmpTs, tmpPoses,
-			tmpJoints, tmpWeights, materialOverride == -1 ? matIdx[prim.material] : materialOverride );
+		BuildFromIndexedData( tmpIndices, tmpVertices, tmpNormals, tmpUvs, tmpPoses,
+			tmpJoints, tmpWeights, materialOverride == -1 ? (prim.material + matIdxOffset) : materialOverride );
 	}
 }
 
@@ -518,8 +475,7 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 //  |  data, which we now convert to the final representation.              LH2'19|
 //  +-----------------------------------------------------------------------------+
 void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector<float3>& tmpVertices,
-	const vector<float3>& tmpNormals, const vector<float2>& tmpUvs, const vector<float2>& tmpUv2s,
-	const vector<float4>& tmpTs, const vector<Pose>& tmpPoses,
+	const vector<float3>& tmpNormals, const vector<float2>& tmpUvs, const vector<Pose>& tmpPoses,
 	const vector<uint4>& tmpJoints, const vector<float4>& tmpWeights, const int materialIdx )
 {
 	// calculate values for consistent normal interpolation
@@ -542,9 +498,9 @@ void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector
 			vN0 = vN1 = vN2 = N;
 		}
 		// Note: we clamp at approx. 45 degree angles; beyond this the approach fails.
-		tmpAlphas[v0idx] = min( tmpAlphas[v0idx], dot( vN0, N ) );
-		tmpAlphas[v1idx] = min( tmpAlphas[v1idx], dot( vN1, N ) );
-		tmpAlphas[v2idx] = min( tmpAlphas[v2idx], dot( vN2, N ) );
+		tmpAlphas[v0idx] = min( tmpAlphas[v0idx], max( 0.7f, dot( vN0, N ) ) );
+		tmpAlphas[v1idx] = min( tmpAlphas[v0idx], max( 0.7f, dot( vN1, N ) ) );
+		tmpAlphas[v2idx] = min( tmpAlphas[v0idx], max( 0.7f, dot( vN2, N ) ) );
 	}
 	for (size_t s = tmpAlphas.size(), i = 0; i < s; i++)
 	{
@@ -560,7 +516,6 @@ void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector
 	for (size_t i = 0; i < newTriangleCount; i++, triIdx++)
 	{
 		HostTri& tri = triangles[triIdx];
-		tri.material = materialIdx;
 		const uint v0idx = tmpIndices[i * 3 + 0];
 		const uint v1idx = tmpIndices[i * 3 + 1];
 		const uint v2idx = tmpIndices[i * 3 + 2];
@@ -587,47 +542,19 @@ void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector
 			tri.u0 = tmpUvs[v0idx].x, tri.v0 = tmpUvs[v0idx].y;
 			tri.u1 = tmpUvs[v1idx].x, tri.v1 = tmpUvs[v1idx].y;
 			tri.u2 = tmpUvs[v2idx].x, tri.v2 = tmpUvs[v2idx].y;
-			if (tri.u0 == tri.u1 && tri.u1 == tri.u2 && tri.v0 == tri.v1 && tri.v1 == tri.v2)
-			{
-				// this triangle uses only a single point on the texture; replace by single color material.
-				int textureID = HostScene::materials[materialIdx]->color.textureID;
-				if (textureID != -1)
-				{
-					HostTexture* texture = HostScene::textures[textureID];
-					uint u = (uint)(tri.u0 * texture->width) % texture->width;
-					uint v = (uint)(tri.v0 * texture->height) % texture->height;
-					uint texel = ((uint*)texture->idata)[u + v * texture->width] & 0xffffff;
-					tri.material = HostScene::FindOrCreateMaterialCopy( materialIdx, texel );
-					int w = 0;
-				}
-			}
 			// calculate tangent vector based on uvs
 			float2 uv01 = make_float2( tri.u1 - tri.u0, tri.v1 - tri.v0 );
 			float2 uv02 = make_float2( tri.u2 - tri.u0, tri.v2 - tri.v0 );
 			if (dot( uv01, uv01 ) == 0 || dot( uv02, uv02 ) == 0)
 			{
-			#if 1
-				// PBRT:
-				// https://github.com/mmp/pbrt-v3/blob/3f94503ae1777cd6d67a7788e06d67224a525ff4/src/shapes/triangle.cpp#L381
-				if (std::abs( N.x ) > std::abs( N.y ))
-					tri.T = make_float3( -N.z, 0, N.x ) / std::sqrt( N.x * N.x + N.z * N.z );
-				else
-					tri.T = make_float3( 0, N.z, -N.y ) / std::sqrt( N.y * N.y + N.z * N.z );
-			#else
 				tri.T = normalize( tri.vertex1 - tri.vertex0 );
-			#endif
 				tri.B = normalize( cross( N, tri.T ) );
 			}
 			else
 			{
+				// uvs cannot be used; use edges instead
 				tri.T = normalize( (tri.vertex1 - tri.vertex0) * uv02.y - (tri.vertex2 - tri.vertex0) * uv01.y );
 				tri.B = normalize( (tri.vertex2 - tri.vertex0) * uv01.x - (tri.vertex1 - tri.vertex0) * uv02.x );
-			}
-			// catch bad tangents
-			if (isnan( tri.T.x + tri.T.y + tri.T.z + tri.B.x + tri.B.y + tri.B.z ))
-			{
-				tri.T = normalize( tri.vertex1 - tri.vertex0 );
-				tri.B = normalize( cross( N, tri.T ) );
 			}
 		}
 		else
@@ -636,13 +563,7 @@ void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector
 			tri.T = normalize( tri.vertex1 - tri.vertex0 );
 			tri.B = normalize( cross( N, tri.T ) );
 		}
-		// handle second and third set of uv coordinates, if available
-		if (tmpUv2s.size() > 0)
-		{
-			tri.u1_0 = tmpUv2s[v0idx].x, tri.v1_0 = tmpUv2s[v0idx].y;
-			tri.u1_1 = tmpUv2s[v1idx].x, tri.v1_1 = tmpUv2s[v1idx].y;
-			tri.u1_2 = tmpUv2s[v2idx].x, tri.v1_2 = tmpUv2s[v2idx].y;
-		}
+		tri.material = materialIdx;
 		// process joints / weights
 		if (tmpJoints.size() > 0)
 		{
@@ -663,19 +584,9 @@ void HostMesh::BuildFromIndexedData( const vector<int>& tmpIndices, const vector
 			poses[i].normals.push_back( pose.normals[v0idx] );
 			poses[i].normals.push_back( pose.normals[v1idx] );
 			poses[i].normals.push_back( pose.normals[v2idx] );
-			if (pose.tangents.size() > 0)
-			{
-				poses[i].tangents.push_back( pose.tangents[v0idx] );
-				poses[i].tangents.push_back( pose.tangents[v1idx] );
-				poses[i].tangents.push_back( pose.tangents[v2idx] );
-			}
-			else
-			{
-				// have some dummies for now
-				poses[i].tangents.push_back( make_float3( 0, 1, 0 ) );
-				poses[i].tangents.push_back( make_float3( 0, 1, 0 ) );
-				poses[i].tangents.push_back( make_float3( 0, 1, 0 ) );
-			}
+			poses[i].tangents.push_back( pose.tangents[v0idx] );
+			poses[i].tangents.push_back( pose.tangents[v1idx] );
+			poses[i].tangents.push_back( pose.tangents[v2idx] );
 		}
 	}
 }
@@ -701,6 +612,23 @@ void HostMesh::BuildMaterialList()
 			materialList.push_back( material->ID );
 		}
 	}
+}
+
+//  +-----------------------------------------------------------------------------+
+//  |  HostMesh::UpdateAlphaFlags                                                 |
+//  |  Create or update the list of alpha flags; one is set to true or fale for   |
+//  |  each triangle in the mesh. This will later be used to mark triangles in    |
+//  |  the core in a core-specific way, and ultimately, to detect triangles that  |
+//  |  may have alpha transparency as efficiently as possible during              |
+//  |  traversal.                                                           LH2'19|
+//  +-----------------------------------------------------------------------------+
+void HostMesh::UpdateAlphaFlags()
+{
+	const uint triCount = (uint)triangles.size();
+	if (alphaFlags.size() != triCount) alphaFlags.resize( triCount, 0 );
+	for (uint i = 0; i < triCount; i++)
+		if (HostScene::materials[triangles[i].material]->flags & HostMaterial::HASALPHA)
+			alphaFlags[i] = 1;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -760,21 +688,16 @@ void HostMesh::SetPose( const HostSkin* skin )
 	}
 #if 1
 	// code optimized for INFOMOV by Alysha Bogaers and Naraenda Prasetya
-
-#if defined( __AVX2__ ) && ( defined( _MSC_VER ) || defined( __FMA__ ) )
+#define USE_PARALLEL_SETPOSE 1
+	// adjust full triangles
+#if USE_PARALLEL_SETPOSE == 1
+#if 0
 	// use avx2 instruction
 #define FMADD256(a,b,c) _mm256_fmadd_ps( (a),(b),(c) )
 #else
 	// avx fallback (negligible impact on performance)
 #define FMADD256(a,b,c) _mm256_add_ps( _mm256_mul_ps( (a), (b) ), (c) )
 #endif
-
-#ifdef _MSC_VER
-#define USE_PARALLEL_SETPOSE // TODO: Find Linux replacement for PPL
-#endif
-
-	// adjust full triangles
-#ifdef USE_PARALLEL_SETPOSE
 	concurrency::parallel_for<int>( 0, (int)triangles.size(), [&]( int t ) {
 	#else
 	for (int s = (int)triangles.size(), t = 0; t < s; t++)
@@ -874,11 +797,11 @@ void HostMesh::SetPose( const HostSkin* skin )
 		_mm_store_ps( &triangles[t].vN1.x, tri_nrm[1] );
 		// store to [vN1 (float3), Nz (float)]
 		_mm_store_ps( &triangles[t].vN2.x, tri_nrm[2] );
+	#if USE_PARALLEL_SETPOSE == 1
+	} );
+#else
 	}
-#ifdef USE_PARALLEL_SETPOSE
-	);
 #endif
-
 #else
 	// transform original into vertex vector using skin matrices
 	for (int s = (int)vertices.size(), i = 0; i < s; i++)

@@ -1,4 +1,4 @@
-/* main_tools.h - Copyright 2019/2021 Utrecht University
+/* main_tools.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -37,12 +37,12 @@ void ReshapeWindowCallback( GLFWwindow* window, int w, int h )
 void KeyEventCallback( GLFWwindow* window, int key, int scancode, int action, int mods )
 {
 	if (key == GLFW_KEY_ESCAPE) running = false;
-	if (action == GLFW_PRESS && key >= 0 && key < 1024) keystates[key] = true;
-	else if (action == GLFW_RELEASE && key >= 0 && key < 1024) keystates[key] = false;
+	if (action == GLFW_PRESS) keystates[key] = true;
+	else if (action == GLFW_RELEASE) keystates[key] = false;
 }
 void CharEventCallback( GLFWwindow* window, uint code ) { /* nothing here yet */ }
 void WindowFocusCallback( GLFWwindow* window, int focused ) { hasFocus = (focused == GL_TRUE); }
-void MouseButtonCallback( GLFWwindow* window, int button, int action, int mods )
+void MouseButtonCallback( GLFWwindow* window, int button, int action, int mods ) 
 {
 	if (action == GLFW_PRESS) mbstates[button] = true;
 	else if (action == GLFW_RELEASE) mbstates[button] = false;
@@ -52,7 +52,7 @@ void MousePosCallback( GLFWwindow* window, double x, double y )
 	// set pixel probe pos for triangle picking
 	if (renderer) renderer->SetProbePos( make_int2( (int)x, (int)y ) );
 }
-void ErrorCallback( int error, const char* description )
+void ErrorCallback( int error, const char*description )
 {
 	fprintf( stderr, "GLFW Error: %s\n", description );
 }
@@ -93,7 +93,6 @@ void InitGLFW()
 	glfwSetMouseButtonCallback( window, MouseButtonCallback );
 	glfwSetCursorPosCallback( window, MousePosCallback );
 	glfwSetCharCallback( window, CharEventCallback );
-	glfwSwapInterval( 0 ); // disable vsync to get accurate performance measurements.
 	// initialize GLAD
 	if (!gladLoadGLLoader( (GLADloadproc)glfwGetProcAddress ))
 	{
@@ -105,7 +104,7 @@ void InitGLFW()
 	glDisable( GL_CULL_FACE );
 	glDisable( GL_BLEND );
 	// logo
-	GLTexture* logo = new GLTexture( "data/system/logo.png", GL_LINEAR );
+	GLTexture* logo = new GLTexture( "data//system//logo.png", GL_LINEAR );
 	shader = new Shader( "shaders/tonemap.vert", "shaders/tonemap.frag" );
 	shader->Bind();
 	shader->SetInputTexture( 0, "color", logo );

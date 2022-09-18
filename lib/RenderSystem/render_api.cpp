@@ -1,4 +1,4 @@
-/* render_api.cpp - Copyright 2019/2021 Utrecht University
+/* render_api.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -61,11 +61,6 @@ int RenderAPI::AddMesh( const char* file, const char* dir, const float scale, bo
 	return renderer->scene->AddMesh( file, dir, scale, flatShaded );
 }
 
-int RenderAPI::AddMesh( const char* file, const float scale, bool flatShaded )
-{
-	return renderer->scene->AddMesh( file, scale, flatShaded );
-}
-
 int RenderAPI::AddMesh( const int triCount )
 {
 	return renderer->scene->AddMesh( triCount );
@@ -79,11 +74,6 @@ void RenderAPI::AddTriToMesh( const int meshId, const float3& v0, const float3& 
 int RenderAPI::AddScene( const char* file, const char* dir, const mat4& transform )
 {
 	return renderer->scene->AddScene( file, dir, transform );
-}
-
-int RenderAPI::AddScene( const char* file, const mat4& transform )
-{
-	return renderer->scene->AddScene( file, transform );
 }
 
 int RenderAPI::AddQuad( const float3 N, const float3 pos, const float width, const float height, const int material, const int meshID )
@@ -106,11 +96,6 @@ void RenderAPI::SetNodeTransform( const int nodeId, const mat4& transform )
 	renderer->scene->SetNodeTransform( nodeId, transform );
 }
 
-const mat4& RenderAPI::GetNodeTransform( const int nodeId )
-{
-	return renderer->scene->GetNodeTransform( nodeId );
-}
-
 void RenderAPI::ResetAnimation( const int animId )
 {
 	renderer->scene->ResetAnimation( animId );
@@ -131,14 +116,9 @@ void RenderAPI::SynchronizeSceneData()
 	renderer->SynchronizeSceneData();
 }
 
-void RenderAPI::Render( Convergence converge, bool async )
+void RenderAPI::Render( Convergence converge )
 {
-	renderer->Render( renderer->scene->camera->GetView(), converge, async );
-}
-
-void RenderAPI::WaitForRender()
-{
-	renderer->WaitForRender();
+	renderer->Render( renderer->scene->camera->GetView(), converge );
 }
 
 Camera* RenderAPI::GetCamera()
@@ -151,24 +131,14 @@ RenderSettings* RenderAPI::GetSettings()
 	return &renderer->settings;
 }
 
-void RenderAPI::Setting( const char* name, const float value )
+int RenderAPI::GetTriangleNode(const int coreInstId, const int coreTriId)
 {
-	renderer->Setting( name, value );
+	return renderer->GetTriangleNode(coreInstId, coreTriId);
 }
 
-int RenderAPI::GetTriangleNode( const int coreInstId, const int coreTriId )
+int RenderAPI::GetTriangleMesh(const int coreInstId, const int coreTriId)
 {
-	return renderer->GetTriangleNode( coreInstId, coreTriId );
-}
-
-int RenderAPI::GetTriangleMesh( const int coreInstId, const int coreTriId )
-{
-	return renderer->GetTriangleMesh( coreInstId, coreTriId );
-}
-
-HostScene* RenderAPI::GetScene()
-{
-	return renderer->scene;
+	return renderer->GetTriangleMesh(coreInstId, coreTriId);
 }
 
 int RenderAPI::GetTriangleMaterialID( const int coreInstId, const int coreTriId )
@@ -187,11 +157,6 @@ HostMaterial* RenderAPI::GetMaterial( const int matId )
 	return renderer->scene->materials[matId];
 }
 
-const std::vector<HostMaterial *> &RenderAPI::GetMaterials()
-{
-	return renderer->scene->materials;
-}
-
 int RenderAPI::FindMaterialID( const char* name )
 {
 	return renderer->scene->FindMaterialID( name );
@@ -202,9 +167,9 @@ int RenderAPI::FindNode( const char* name )
 	return renderer->scene->FindNode( name );
 }
 
-int RenderAPI::AddMaterial( const float3 color, const char* name )
+int RenderAPI::AddMaterial( const float3 color )
 {
-	return renderer->scene->AddMaterial( color, name );
+	return renderer->scene->AddMaterial( color );
 }
 
 int RenderAPI::AddPointLight( const float3 pos, const float3 radiance, bool enabled )
@@ -232,7 +197,7 @@ void RenderAPI::SetProbePos( const int2 pos )
 	renderer->SetProbePos( pos );
 }
 
-CoreStats RenderAPI::GetCoreStats() const
+CoreStats RenderAPI::GetCoreStats()
 {
 	return renderer->GetCoreStats();
 }

@@ -1,4 +1,4 @@
-﻿/* rendersystem.cpp - Copyright 2019/2021 Utrecht University
+﻿/* rendersystem.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -49,11 +49,11 @@ void RenderSystem::SetTarget( GLTexture* target, const uint spp )
 //  +-----------------------------------------------------------------------------+
 void RenderSystem::SynchronizeSky()
 {
-	if (scene->sky && scene->sky->Changed())
+	if (scene->sky->Changed())
 	{
 		// send sky data to core
 		HostSkyDome* sky = scene->sky;
-		core->SetSkyData( sky->pixels, sky->width, sky->height, sky->worldToLight );
+		core->SetSkyData( sky->pixels, sky->width, sky->height );
 	}
 }
 
@@ -85,19 +85,32 @@ void RenderSystem::SynchronizeMaterials()
 	bool materialsDirty = false;
 	for (auto material : scene->materials) if (material->Changed())
 	{
-		// send all material data to core
+		materialsDirty = true;
+		// if the change is/includes a change of the material alpha flag, mark all
+		// meshes using this material as dirty as well.
+		if (material->AlphaChanged())
+		{
+			for (auto mesh : scene->meshPool) for (int m : mesh->materialList) if (m == material->ID)
+			{
+				mesh->MarkAsDirty();
+				break;
+			}
+		}
+	}
+	if (materialsDirty)
+	{
+		// send material data to core
 		vector<CoreMaterial> gpuMaterial;
-		for (auto sceneMat : scene->materials)
+		vector<CoreMaterialEx> gpuMaterialEx;
+		for (auto material : scene->materials)
 		{
 			CoreMaterial m;
-			memcpy( &m, sceneMat, sizeof( CoreMaterial ) );
+			CoreMaterialEx e;
+			material->ConvertTo( m, e );
 			gpuMaterial.push_back( m );
+			gpuMaterialEx.push_back( e );
 		}
-		core->SetMaterials( gpuMaterial.data(), (int)gpuMaterial.size() );
-		// mark them all as 'clean' to prevent subsequent transfers
-		for (auto m : scene->materials) m->MarkAsNotDirty();
-		// halt further processing
-		break;
+		core->SetMaterials( gpuMaterial.data(), gpuMaterialEx.data(), (int)gpuMaterial.size() );
 	}
 }
 
@@ -115,8 +128,9 @@ void RenderSystem::SynchronizeMeshes()
 		HostMesh* mesh = scene->meshPool[modelIdx];
 		if (mesh->Changed())
 		{
-			mesh->MarkAsNotDirty();
-			core->SetGeometry( modelIdx, mesh->vertices.data(), (int)mesh->vertices.size(), (int)mesh->triangles.size(), (CoreTri*)mesh->triangles.data() );
+			mesh->UpdateAlphaFlags();
+			mesh->MarkAsNotDirty(); // otherwise UpdateAlphaFlags will trigger a second update.
+			core->SetGeometry( modelIdx, mesh->vertices.data(), (int)mesh->vertices.size(), (int)mesh->triangles.size(), (CoreTri*)mesh->triangles.data(), mesh->alphaFlags.data() );
 			meshesChanged = true; // trigger scene graph update
 		}
 	}
@@ -145,7 +159,7 @@ void RenderSystem::UpdateSceneGraph()
 	// synchronize instances to device if anything changed
 	if (instancesChanged || meshesChanged || instances.size() != instanceCount)
 	{
-		// resize vector (free if the size didn't change)
+		// resize vector (this is free if the size didn't change)
 		instances.resize( instanceCount );
 		// send instances to core
 		for (int instanceIdx = 0; instanceIdx < instanceCount; instanceIdx++)
@@ -156,10 +170,10 @@ void RenderSystem::UpdateSceneGraph()
 			core->SetInstance( instanceIdx, node->meshID, node->combinedTransform );
 		}
 		core->SetInstance( instanceCount, -1 );
+		// finalize
+		core->UpdateToplevel();
 		meshesChanged = false;
 	}
-	// allow the core to finalize after receiving all instances
-	core->FinalizeInstances();
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -170,22 +184,22 @@ void RenderSystem::UpdateSceneGraph()
 void RenderSystem::SynchronizeLights()
 {
 	bool lightsDirty = false;
-	for (auto light : scene->triLights) if (light->Changed()) lightsDirty = true;
+	for (auto light : scene->areaLights) if (light->Changed()) lightsDirty = true;
 	for (auto light : scene->pointLights) if (light->Changed()) lightsDirty = true;
 	for (auto light : scene->spotLights) if (light->Changed()) lightsDirty = true;
 	for (auto light : scene->directionalLights) if (light->Changed()) lightsDirty = true;
 	if (lightsDirty)
 	{
-		// send lights to core
-		vector<CoreLightTri> gpuTriLights;
+		// send delta lights to core
+		vector<CoreLightTri> gpuAreaLights;
 		vector<CorePointLight> gpuPointLights;
 		vector<CoreSpotLight> gpuSpotLights;
 		vector<CoreDirectionalLight> gpuDirectionalLights;
-		for (auto light : scene->triLights) if (light->enabled) gpuTriLights.push_back( light->ConvertToCoreLightTri() );
+		for (auto light : scene->areaLights) if (light->enabled) gpuAreaLights.push_back( light->ConvertToCoreLightTri() );
 		for (auto light : scene->pointLights) if (light->enabled) gpuPointLights.push_back( light->ConvertToCorePointLight() );
 		for (auto light : scene->spotLights) if (light->enabled) gpuSpotLights.push_back( light->ConvertToCoreSpotLight() );
 		for (auto light : scene->directionalLights) if (light->enabled) gpuDirectionalLights.push_back( light->ConvertToCoreDirectionalLight() );
-		core->SetLights( gpuTriLights.data(), (int)gpuTriLights.size(),
+		core->SetLights( gpuAreaLights.data(), (int)gpuAreaLights.size(),
 			gpuPointLights.data(), (int)gpuPointLights.size(),
 			gpuSpotLights.data(), (int)gpuSpotLights.size(),
 			gpuDirectionalLights.data(), (int)gpuDirectionalLights.size() );
@@ -206,15 +220,15 @@ void RenderSystem::SynchronizeSceneData()
 	SynchronizeTextures();
 	SynchronizeMaterials();
 	SynchronizeMeshes();
-	SynchronizeLights();
 	UpdateSceneGraph();
+	SynchronizeLights();
 }
 
 //  +-----------------------------------------------------------------------------+
 //  |  RenderSystem::Render                                                       |
 //  |  Produce one image.                                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderSystem::Render( const ViewPyramid& view, Convergence converge, bool async )
+void RenderSystem::Render( const ViewPyramid& view, Convergence converge )
 {
 	// forward to core; core may ignore or accept a setting
 	core->Setting( "epsilon", settings.geometryEpsilon );
@@ -223,16 +237,7 @@ void RenderSystem::Render( const ViewPyramid& view, Convergence converge, bool a
 	core->Setting( "clampIndirect", settings.filterIndirectClamp );
 	core->Setting( "filter", settings.filterEnabled );
 	core->Setting( "TAA", settings.TAAEnabled );
-	core->Render( view, converge, async );
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderSystem::WaitForRender                                                |
-//  |  Wait for the asynchronous renderer to complete.                      LH2'20|
-//  +-----------------------------------------------------------------------------+
-void RenderSystem::WaitForRender()
-{
-	core->WaitForRender();
+	core->Render( view, converge );
 }
 
 //  +-----------------------------------------------------------------------------+

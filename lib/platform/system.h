@@ -1,4 +1,4 @@
-/* system.h - Copyright 2019/2021 Utrecht University
+/* system.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,34 +22,47 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <cstdarg>
+#include <cstdint>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <half.hpp>
-#ifdef _MSC_VER
 #include <ppl.h>
-#endif
+#include <ratio>
 #include <string>
 #include <thread>
 #include <vector>
-#include <map>
 
 using namespace std;
 using namespace half_float;
 
 #include "immintrin.h"
-#include "../RenderSystem/common_types.h"
-#include "../RenderSystem/common_settings.h"
-#include "../RenderSystem/common_classes.h"
-#include "../RenderSystem/common_functions.h"
+#include "emmintrin.h"
+#include "common_types.h"
+#include "common_settings.h"
+#include "common_classes.h"
 #include <GLFW/glfw3.h>		// needed for Timer class
 
 // https://devblogs.microsoft.com/cppblog/msvc-preprocessor-progress-towards-conformance/
 // MSVC _Should_ support this extended functionality for the token-paste operator:
-#define FATALERROR( f, ... ) FatalError( "Error on line %d of %s: " f "\n", __LINE__, __FILE__, ##__VA_ARGS__ )
-#define FATALERROR_IF( c, f, ... ) do { if (c) FATALERROR( f, ##__VA_ARGS__ ); } while ( 0 )
-#define FATALERROR_IN( p, e, f, ... ) FatalError( p " returned error '%s' at %s:%d" f "\n", e, __FILE__, __LINE__, ##__VA_ARGS__ );
-#define FATALERROR_IN_CALL( s, e, f, ... ) do { auto r = (s); if (r) FATALERROR_IN( #s, e( r ), f, ##__VA_ARGS__ ) } while (0)
+#define FATALERROR( fmt, ... ) FatalError( "Error on line %d of %s: " fmt "\n", __LINE__, __FILE__, ##__VA_ARGS__ )
+#define FATALERROR_IF( condition, fmt, ... ) do { if ( ( condition ) ) FATALERROR( fmt, ##__VA_ARGS__ ); } while ( 0 )
 
-// data / memory address alignment
+#define FATALERROR_IN( prefix, errstr, fmt, ... )                \
+	FatalError( prefix " returned error '%s' at %s:%d" fmt "\n", \
+				errstr, __FILE__, __LINE__,                      \
+				##__VA_ARGS__ );
+
+// Fatal error helper. Executes statement and throws fatal error on non-zero result.
+// The result is converted to string by calling error_parser( ret )
+#define FATALERROR_IN_CALL( stmt, error_parser, fmt, ... )                         \
+	do                                                                             \
+	{                                                                              \
+		auto ret = ( stmt );                                                       \
+		if ( ret ) FATALERROR_IN( #stmt, error_parser( ret ), fmt, ##__VA_ARGS__ ) \
+	} while ( 0 )
+
 #ifdef _MSC_VER
 #define ALIGN( x ) __declspec( align( x ) )
 #define MALLOC64( x ) ((x)==0?0:_aligned_malloc((x),64))
@@ -60,21 +73,33 @@ using namespace half_float;
 #define FREE64( x ) free( x )
 #endif
 
+// threading
+class Thread
+{
+public:
+	void start();
+	inline virtual void run() {};
+	std::thread thread;
+};
+extern "C" { uint sthread_proc( void* param ); }
+
 // timer
 struct Timer
 {
 	Timer() { reset(); }
 	float elapsed() const
 	{
-		chrono::high_resolution_clock::time_point t2 = chrono::high_resolution_clock::now();
-		chrono::duration<double> time_span = chrono::duration_cast<chrono::duration<double>>(t2 - start);
+		std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - start);
 		return (float)time_span.count();
 	}
-	void reset() { start = chrono::high_resolution_clock::now(); }
-	chrono::high_resolution_clock::time_point start;
+	void reset()
+	{
+		start = std::chrono::high_resolution_clock::now();
+	}
+	std::chrono::high_resolution_clock::time_point start;
 };
 
-// convenience functions
 #define wrap(x,a,b) (((x)>=(a))?((x)<=(b)?(x):((x)-((b)-(a)))):((x)+((b)-(a))))
 __inline float sqr( const float x ) { return x * x; }
 template <class T> void Swap( T& x, T& y ) { T t; t = x; x = y; y = t; }
@@ -179,7 +204,7 @@ void OpenConsole();
 bool FileIsNewer( const char* file1, const char* file2 );
 bool NeedsRecompile( const char* path, const char* target, const char* s1, const char* s2 = 0, const char* s3 = 0, const char* s4 = 0 );
 bool FileExists( const char* f );
-bool RemoveFile( const char* f );
+bool RemoveFile( const char* f);
 string TextFileRead( const char* _File );
 void TextFileWrite( const string& text, const char* _File );
 string LowerCase( string s );
@@ -198,20 +223,6 @@ public:
 	Bitmap( uint w, uint h ) : pixels( new uint[w * h] ), width( w ), height( h ) {}
 	~Bitmap() { delete pixels; }
 	void Plot( uint x, uint y, uint c ) { if (x < width && y < height) pixels[x + y * width] = c; }
-	void Box( uint x1, uint y1, uint x2, uint y2, uint c )
-	{
-		uint* t0 = pixels + y1 * width, *t1 = t0 + (y2 - y1) * width;
-		for( uint x = x1; x <= x2; x++ ) t0[x] = t1[x] = c;
-		t1 = t0 + x2, t0 += x1;
-		for( uint y = y1; y <= y2; y++, t0 += width, t1 += width ) *t0 = *t1 = c;
-	}
-	void Bar( uint x1, uint y1, uint x2, uint y2, uint c )
-	{
-		uint* t0 = pixels + y1 * width;
-		for( uint y = y1; y <= y2; y++, t0 += width ) for( uint x = x1; x <= x2; x++ ) t0[x] = c;
-	}
-	void HLine( uint x1, uint y1, uint l, uint c ) { for( uint* t = pixels + x1 + y1 * width, i = 0; i < l; i++ ) t[i] = c; }
-	void VLine( uint x1, uint y1, uint l, uint c ) { for( uint* t = pixels + x1 + y1 * width, i = 0; i < l; i++, t += width ) *t = c; }
 	void Clear() { memset( pixels, 0, width * height * 4 ); }
 	uint* pixels = nullptr;
 	uint width = 0, height = 0;
@@ -220,42 +231,23 @@ public:
 class GLTexture
 {
 public:
-	enum { DEFAULT = 0, FLOAT = 1 };
+	enum
+	{
+		DEFAULT = 0,
+		FLOAT = 1
+	};
 	// constructor / destructor
-	GLTexture();
 	GLTexture( uint width, uint height, uint type = DEFAULT );
 	GLTexture( const char* fileName, int filter = GL_NEAREST );
 	~GLTexture();
 	// methods
 	void Bind();
-	void Load( const char* fileName, int filter = GL_NEAREST );
 	void CopyFrom( Bitmap* src );
 	void CopyTo( Bitmap* dst );
 	// public data members
 public:
 	GLuint ID = 0;
 	uint width = 0, height = 0;
-};
-
-class Shader;
-class GLTextRenderer
-{
-	struct Character
-	{
-		uint ID;			// handle of the glyph texture
-		int2 size;			// size of glyph
-		int2 bearing;		// offset from baseline to left/top of glyph
-		uint advance;		// horizontal offset to advance to next glyph
-	};
-public:
-	GLTextRenderer( const int size, const char* font );
-	void Render( string text, GLfloat x, GLfloat y, GLfloat scale = 1.0f, const float3 color = make_float3( 1 ), bool rightAlign = false );
-	void RenderR( string text, GLfloat x, GLfloat y, GLfloat scale = 1.0f, const float3 color = make_float3( 1 ) );
-	static inline int scrwidth = SCRWIDTH, scrheight = SCRHEIGHT;
-private:
-	GLuint vbo, vao;
-	Shader* shader;
-	map<char, Character> Characters;
 };
 
 } // namespace lighthouse2
@@ -278,6 +270,7 @@ using namespace lighthouse2;
 #define COREDLL_IMPORT
 #pragma warning Unknown dynamic link import/export semantics.
 #endif
+
 #ifdef COREDLL_EXPORTS
 #define COREDLL_API COREDLL_EXPORT
 #else

@@ -1,4 +1,4 @@
-/* system.cpp - Copyright 2019/2021 Utrecht University
+/* system.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -37,8 +37,6 @@ extern "C"
 #ifndef WIN32
 #include <unistd.h>
 #endif
-#include <ft2build.h>
-#include FT_FREETYPE_H
 
 //  +-----------------------------------------------------------------------------+
 //  |  RNG - Marsaglia's xor32.                                             LH2'19|
@@ -116,109 +114,12 @@ Bitmap::Bitmap( const char* f )
 	width = FreeImage_GetWidth( dib );
 	height = FreeImage_GetHeight( dib );
 	pixels = (uint*)MALLOC64( width * height * sizeof( uint ) );
-	for (uint y = 0; y < height; y++)
+	for( uint y = 0; y < height; y++)
 	{
-		unsigned const char* line = FreeImage_GetScanLine( dib, height - 1 - y );
+		unsigned const char *line = FreeImage_GetScanLine( dib, height - 1 - y );
 		memcpy( pixels + y * width, line, width * sizeof( uint ) );
 	}
 	FreeImage_Unload( dib );
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  GLTextRenderer implementation.                                       LH2'20|
-//  +-----------------------------------------------------------------------------+
-GLTextRenderer::GLTextRenderer( const int size, const char* font )
-{
-	// initialize FreeType2, based on https://learnopengl.com/In-Practice/Text-Rendering
-	FT_Library ft;
-	FT_Face face;
-	if (FT_Init_FreeType( &ft )) FatalError( "Could not initialize FreeType2." );
-	if (FT_New_Face( ft, font, 0, &face )) FatalError( "Could not load font." );
-	FT_Set_Pixel_Sizes( face, 0, size );
-	shader = new Shader( "shaders/freetype2.vert", "shaders/freetype2.frag" );
-	// prepare charset textures
-	glPixelStorei( GL_UNPACK_ALIGNMENT, 1 ); // disable byte-alignment restriction
-	for (GLubyte c = 0; c < 128; c++)
-	{
-		if (FT_Load_Char( face, c, FT_LOAD_RENDER )) FatalError( "failed to load glyph" );
-		GLuint texture;
-		glGenTextures( 1, &texture );
-		glBindTexture( GL_TEXTURE_2D, texture );
-		glTexImage2D( GL_TEXTURE_2D, 0, GL_RED, face->glyph->bitmap.width, face->glyph->bitmap.rows,
-			0, GL_RED, GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-		Character character = { texture,
-			make_int2( face->glyph->bitmap.width, face->glyph->bitmap.rows ),
-			make_int2( face->glyph->bitmap_left, face->glyph->bitmap_top ),
-			(uint)face->glyph->advance.x };
-		Characters.insert( pair<GLchar, Character>( c, character ) );
-	}
-	glBindTexture( GL_TEXTURE_2D, 0 );
-	glPixelStorei( GL_UNPACK_ALIGNMENT, 4 ); // restore default byte-alignment
-	// destroy FreeType once we're finished
-	FT_Done_Face( face );
-	FT_Done_FreeType( ft );
-	// configure VAO/VBO for texture quads
-	glGenVertexArrays( 1, &vao );
-	glGenBuffers( 1, &vbo );
-	glBindVertexArray( vao );
-	glBindBuffer( GL_ARRAY_BUFFER, vbo );
-	glBufferData( GL_ARRAY_BUFFER, sizeof( GLfloat ) * 6 * 4, NULL, GL_DYNAMIC_DRAW );
-	glEnableVertexAttribArray( 0 );
-	glVertexAttribPointer( 0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof( GLfloat ), 0 );
-	glBindBuffer( GL_ARRAY_BUFFER, 0 );
-	glBindVertexArray( 0 );
-}
-
-void GLTextRenderer::RenderR( string text, GLfloat x, GLfloat y, GLfloat scale, const float3 color )
-{
-	Render( text, x, y, scale, color, true );
-}
-
-void GLTextRenderer::Render( string text, GLfloat x, GLfloat y, GLfloat scale, const float3 color, bool rightAlign )
-{
-	// activate corresponding render state	
-	shader->Bind();
-	mat4 projection = mat4::Ortho( 0.0f, (float)scrwidth, 0.0f, (float)scrheight, 0, 1 );
-	glUniformMatrix4fv( glGetUniformLocation( shader->ID, "projection" ), 1, GL_FALSE, (GLfloat*)&projection );
-	glUniform3f( glGetUniformLocation( shader->ID, "textColor" ), color.x, color.y, color.z );
-	glActiveTexture( GL_TEXTURE0 );
-	glBindVertexArray( vao );
-	// calculate start x when aligning to the right
-	string::const_iterator c;
-	if (rightAlign) 
-	{
-		for (c = text.begin(); c != text.end(); c++) x -= (Characters[*c].advance >> 6)* scale;
-	}
-	// iterate through characters
-	for (c = text.begin(); c != text.end(); c++)
-	{
-		Character ch = Characters[*c];
-		GLfloat xpos = x + ch.bearing.x * scale;
-		GLfloat ypos = scrheight - 48 * scale - y + (ch.bearing.y - ch.size.y) * scale;
-		GLfloat w = ch.size.x * scale;
-		GLfloat h = ch.size.y * scale;
-		// update VBO for each character
-		GLfloat vertices[6][4] = {
-			{ xpos, ypos + h, 0.0, 0.0 }, { xpos, ypos, 0.0, 1.0 },
-		{ xpos + w, ypos, 1.0, 1.0 }, { xpos, ypos + h, 0.0, 0.0 },
-		{ xpos + w, ypos, 1.0, 1.0 }, { xpos + w, ypos + h, 1.0, 0.0 } };
-		// render glyph texture over quad
-		glBindTexture( GL_TEXTURE_2D, ch.ID );
-		// update content of VBO memory
-		glBindBuffer( GL_ARRAY_BUFFER, vbo );
-		glBufferSubData( GL_ARRAY_BUFFER, 0, sizeof( vertices ), vertices );
-		glBindBuffer( GL_ARRAY_BUFFER, 0 );
-		// render quad
-		glDrawArrays( GL_TRIANGLES, 0, 6 );
-		// advance cursor for next glyph (in 1/64 pixels)
-		x += (ch.advance >> 6)* scale;
-	}
-	glBindVertexArray( 0 );
-	glBindTexture( GL_TEXTURE_2D, 0 );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -252,8 +153,8 @@ bool FileExists( const char* f )
 
 bool RemoveFile( const char* f )
 {
-	if (!FileExists( f )) return false;
-	return !remove( f );
+	if (!FileExists(f)) return false;
+	return !remove(f);
 }
 
 uint FileSize( string filename )
@@ -331,7 +232,7 @@ void FatalError( const char* fmt, ... )
 	fprintf( stderr, t );
 #endif
 	assert( false );
-	while (1) exit( EXIT_FAILURE );
+	while (1) exit( 0 );
 }
 
 // EOF

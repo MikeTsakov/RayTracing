@@ -1,4 +1,4 @@
-/* platform.h - Copyright 2019/2021 Utrecht University
+/* platform.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -44,8 +44,6 @@
 #include <zlib.h>
 #include "emmintrin.h"
 #include <FreeImage.h>
-#include <taskflow.hpp>
-
 // clang-format on
 
 // namespaces
@@ -70,8 +68,6 @@ public:
 	void SetInputTexture( uint slot, const char* name, GLTexture* texture );
 	void SetInputMatrix( const char* name, const mat4& matrix );
 	void SetFloat( const char* name, const float v );
-	void SetFloat3( const char* name, const float3 v );
-	void SetFloat4( const char* name, const float4 v );
 	void SetInt( const char* name, const int v );
 	void SetUInt( const char* name, const uint v );
 	void Unbind();
@@ -79,68 +75,8 @@ private:
 	// data members
 	uint vertex = 0;	// vertex shader identifier
 	uint pixel = 0;		// fragment shader identifier
-public:
 	// public data members
 	uint ID = 0;		// shader program identifier
-};
-
-// Low-level thread class
-class WinThread 
-{
-public:
-	WinThread() { t = 0; }
-	unsigned long* handle() { return t; }
-	void start();
-	virtual void run() {};
-	void setPriority( int p );
-private:
-	unsigned long* t;
-};
-extern "C" { unsigned int sthread_proc( void* param ); }
-
-// Nils's jobmanager
-class Job
-{
-public:
-	virtual void Main() = 0;
-protected:
-	friend class JobThread;
-	void RunCodeWrapper();
-};
-class JobThread
-{
-public:
-	void CreateAndStartThread( unsigned int threadId );
-	void WaitForThreadToStop();
-	void Go();
-	void BackgroundTask();
-	HANDLE m_GoSignal, m_ThreadHandle;
-	int m_ThreadID;
-};
-class JobManager	// singleton class!
-{
-protected:
-	JobManager( unsigned int numThreads );
-public:
-	~JobManager();
-	static void CreateJobManager( unsigned int numThreads );
-	static JobManager* GetJobManager(); 
-	static void GetProcessorCount( uint& cores, uint& logical );
-	void AddJob2( Job* a_Job );
-	unsigned int GetNumThreads() { return m_NumThreads; }
-	void RunJobs();
-	void ThreadDone( unsigned int n );
-	int MaxConcurrent() { return m_NumThreads; }
-protected:
-	friend class JobThread;
-	Job* GetNextJob();
-	Job* FindNextJob();
-	static JobManager* m_JobManager;
-	Job* m_JobList[256];
-	CRITICAL_SECTION m_CS;
-	HANDLE m_ThreadDone[64];
-	unsigned int m_NumThreads, m_JobCount;
-	JobThread* m_JobThreadList;
 };
 
 } // namespace lighthouse2
@@ -153,6 +89,6 @@ void BindVBO( const uint idx, const uint N, const GLuint id );
 void CheckShader( GLuint shader, const char* vshader, const char* fshader );
 void CheckProgram( GLuint id, const char* vshader, const char* fshader );
 void DrawQuad();
-void DrawShapeOnScreen( std::vector<float2> verts, std::vector<float4> colors, uint GLshape, float width = 1.0f );
+void DrawShapeOnScreen(std::vector<float2> verts, std::vector<float4> colors, uint GLshape, float width = 1.0f);
 
 // EOF

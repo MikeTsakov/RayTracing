@@ -1,4 +1,4 @@
-/* .optix.cu - Copyright 2019/2020 Utrecht University
+/* .optix.cu - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -20,9 +20,8 @@
 #include "helper_math.h"
 
 // global include files
-#include "../../RenderSystem/common_settings.h"
-#include "../../RenderSystem/common_types.h"
-#define OPTIX_CU // skip CUDAMaterial definition in core_settings.h; not needed here 
+#include "../../rendersystem/common_settings.h"
+#include "../../rendersystem/common_types.h"
 #include "../core_settings.h"
 
 // global path tracing parameters
@@ -121,13 +120,12 @@ __device__ void setupPrimaryRay( const uint pathIdx, const uint stride )
 	float3 O, D;
 	generateEyeRay( O, D, pixelIdx, sampleIdx, seed );
 	// populate path state array
-	params.pathStates[pathIdx] = make_float4( O, __uint_as_float( (pathIdx << 6) + 1 /* S_SPECULAR in CUDA code */ ) );
+	params.pathStates[pathIdx] = make_float4( O, __uint_as_float( (pathIdx << 8) + 1 /* S_SPECULAR in CUDA code */ ) );
 	params.pathStates[pathIdx + stride] = make_float4( D, 0 );
 	// trace eye ray
 	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
 	optixTrace( params.bvhRoot, O, D, params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
 		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3 );
-	if (pixelIdx < stride /* OptiX bug workaround? */) if (u2 != 0xffffffff) /* bandwidth reduction */
 	params.hitData[pathIdx] = make_float4( __uint_as_float( u0 ), __uint_as_float( u1 ), __uint_as_float( u2 ), __uint_as_float( u3 ) );
 }
 
@@ -135,10 +133,11 @@ __device__ void setupSecondaryRay( const uint rayIdx, const uint stride )
 {
 	const float4 O4 = params.pathStates[rayIdx];
 	const float4 D4 = params.pathStates[rayIdx + stride];
+	float4 result = make_float4( 0, 0, __int_as_float( -1 ), 0 );
+	uint pixelIdx = __float_as_uint( O4.w ) >> 8;
 	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
 	optixTrace( params.bvhRoot, make_float3( O4 ), make_float3( D4 ), params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
 		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3 );
-	if (rayIdx < stride /* OptiX bug workaround? */) if (u2 != 0xffffffff) /* bandwidth reduction */
 	params.hitData[rayIdx] = make_float4( __uint_as_float( u0 ), __uint_as_float( u1 ), __uint_as_float( u2 ), __uint_as_float( u3 ) );
 }
 
@@ -153,19 +152,27 @@ __device__ void generateShadowRay( const uint rayIdx, const uint stride )
 	if (u0) return;
 	const float4 E4 = params.connectData[rayIdx + stride * 2 * 2]; // E4
 	const int pixelIdx = __float_as_int( E4.w );
-	if (pixelIdx < stride /* OptiX bug workaround? */) params.accumulator[pixelIdx] += make_float4( E4.x, E4.y, E4.z, 1 );
+	params.accumulator[pixelIdx] += make_float4( E4.x, E4.y, E4.z, 1 );
 }
 
 extern "C" __global__ void __raygen__rg()
 {
 	const uint stride = params.scrsize.x * params.scrsize.y * params.scrsize.z;
 	const uint3 idx = optixGetLaunchIndex();
-	const uint rayIdx = idx.x + idx.y * params.scrsize.x;
-	switch (params.phase)
+	if (params.phase == 0)
 	{
-	case Params::SPAWN_PRIMARY: /* primary rays */ setupPrimaryRay( rayIdx, stride ); break;
-	case Params::SPAWN_SECONDARY: /* secondary rays */ setupSecondaryRay( rayIdx, stride ); break;
-	case Params::SPAWN_SHADOW: /* shadow rays */ generateShadowRay( rayIdx, stride ); break;
+		// primary rays
+		setupPrimaryRay( idx.x + idx.y * params.scrsize.x, stride );
+	}
+	else if (params.phase == 1)
+	{
+		// secondary rays
+		setupSecondaryRay( idx.x + idx.y * params.scrsize.x, stride );
+	}
+	else
+	{
+		// shadow rays
+		generateShadowRay( idx.x + idx.y * params.scrsize.x, stride );
 	}
 }
 

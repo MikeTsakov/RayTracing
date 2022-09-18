@@ -1,4 +1,4 @@
-/* host_texture.cpp - Copyright 2019/2021 Utrecht University
+/* host_texture.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -34,8 +34,7 @@ HostTexture::HostTexture( const char* fileName, const uint modFlags )
 //  |  HostTexture::ConvertToCoreTexDesc                                          |
 //  |  Constructs a GPUTexture based on a HostTexture.                            |
 //  |  Note that this is only a partial conversion:                               |
-//  |  - texture dimensions are (also) stored in the CoreMaterial object,         |
-//  |    for fast access;                                                         |
+//  |  - texture dimensions are stored in the CoreMaterial object for fast access;|
 //  |  - texture pixels are stored in continuous arrays.                          |
 //  |  The GPUTexture structure will be used by RenderCore to build and maintain  |
 //  |  these continuous arrays however.                                     LH2'19|
@@ -43,9 +42,6 @@ HostTexture::HostTexture( const char* fileName, const uint modFlags )
 CoreTexDesc HostTexture::ConvertToCoreTexDesc() const
 {
 	CoreTexDesc gpuTex;
-	gpuTex.width = width;
-	gpuTex.height = height;
-	gpuTex.flags = flags;
 	assert( (fdata != 0) | (idata != 0) );
 	if (fdata)
 	{
@@ -78,23 +74,6 @@ void HostTexture::sRGBtoLinear( uchar* pixels, const uint size, const uint strid
 		pixels[j * stride + 1] = (pixels[j * stride + 1] * pixels[j * stride + 1]) >> 8;
 		pixels[j * stride + 2] = (pixels[j * stride + 2] * pixels[j * stride + 2]) >> 8;
 	}
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostTexture::InverseGammaCorrect                                           |
-//  |  Bring a gamma-corrected texture to linear color space.               LH2'19|
-//  +-----------------------------------------------------------------------------+
-float HostTexture::InverseGammaCorrect( float value )
-{
-	if (value <= 0.04045f) return value * 1.f / 12.92f;
-	return powf( (value + 0.055f) * 1.f / 1.055f, 2.4f );
-}
-float4 HostTexture::InverseGammaCorrect( const float4& color )
-{
-	return make_float4(
-		InverseGammaCorrect( color.x ),
-		InverseGammaCorrect( color.y ),
-		InverseGammaCorrect( color.z ), color.w );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -219,6 +198,14 @@ void HostTexture::Load( const char* fileName, const uint modFlags, bool normalMa
 	uint pitch = FreeImage_GetPitch( img );
 	BYTE* bytes = (BYTE*)FreeImage_GetBits( img );
 	uint bpp = FreeImage_GetBPP( img );
+	FIBITMAP* alpha = FreeImage_GetChannel( img, FICC_ALPHA );
+	if (alpha)
+	{
+		// set alpha rendering for this texture to true if it contains a meaningful alpha channel
+		DWORD histogram[256];
+		if (FreeImage_GetHistogram( alpha, histogram )) if (histogram[0] > 0) flags |= HASALPHA;
+		FreeImage_Unload( alpha );
+	}
 	// iterate image pixels and write to LightHouse internal format
 	if (bpp == 32) // LDR
 	{
@@ -255,30 +242,6 @@ void HostTexture::Load( const char* fileName, const uint modFlags, bool normalMa
 	if (normalMap) flags |= NORMALMAP;
 	// unload
 	FreeImage_Unload( img ); if (bpp == 32) FreeImage_Unload( tmp );
-
-	// perform gamma correction
-	if (mods & GAMMACORRECTION)
-	{
-		for (uint p = 0; p < width * height; ++p)
-		{
-			if (flags & HDR)
-				fdata[p] = InverseGammaCorrect( fdata[p] );
-			else
-			{
-				const auto convert = []( const uchar in ) {
-					return (uchar)clamp( InverseGammaCorrect( in / 255.f ) * 255.f, 0.f, 255.f );
-				};
-
-				const auto in = idata[p];
-				idata[p] = make_uchar4(
-					convert( in.x ),
-					convert( in.y ),
-					convert( in.z ),
-					in.w );
-			}
-		}
-	}
-
 #ifdef CACHEIMAGES
 	// prepare binary blob to be faster next time
 	if (strlen( fileName ) > 4) if (fileName[strlen( fileName ) - 4] == '.')

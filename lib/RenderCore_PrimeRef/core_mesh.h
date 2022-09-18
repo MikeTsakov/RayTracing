@@ -1,4 +1,4 @@
-/* core_mesh.h - Copyright 2019/2020 Utrecht University
+/* core_mesh.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ public:
 	CoreMesh() = default;
 	~CoreMesh();
 	// methods
-	void SetGeometry( const float4* vertexData, const int vertexCount, const int triCount, const CoreTri* tris );
+	void SetGeometry( const float4* vertexData, const int vertexCount, const int triCount, const CoreTri* tris, const uint* alphaFlags = 0 );
 	// data
 	CoreBuffer<CoreTri4>* triangles = 0;		// original triangle data, as received from RenderSystem
 	uint3* indexData = 0;					// dummy index data; simply increasing numbers

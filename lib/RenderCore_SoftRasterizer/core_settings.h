@@ -1,4 +1,4 @@
-/* core_settings.h - Copyright 2019/2021 Utrecht University
+/* core_settings.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
    limitations under the License.
 
    The settings and classes in this file are core-specific:
-   - available in host and device code
+   - avilable in host and device code
    - specific to this particular core.
    Global settings can be configured shared.h.
 */
@@ -34,6 +34,7 @@
 using namespace lighthouse2;
 
 #include "core_api_base.h"
+#include "core_api.h"
 #include "rasterizer.h"
 #include "rendercore.h"
 

@@ -1,4 +1,4 @@
-/* core_mesh.h - Copyright 2019/2021 Utrecht University
+/* core_mesh.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,8 +15,7 @@
 
 #pragma once
 
-namespace lh2core
-{
+namespace lh2core {
 
 //  +-----------------------------------------------------------------------------+
 //  |  CoreMesh                                                                   |
@@ -32,8 +31,7 @@ public:
 	CoreMesh() = default;
 	~CoreMesh();
 	// methods
-	void SetGeometry( const float4* vertexData, const int vertexCount, const int triCount, const CoreTri* tris );
-	void UpdateAccstruc();
+	void SetGeometry( const float4* vertexData, const int vertexCount, const int triCount, const CoreTri* tris, const uint* alphaFlags = 0 );
 	// data
 	int triangleCount = 0;					// number of triangles in the mesh
 	CoreBuffer<float4>* positions4 = 0;		// vertex data for intersection
@@ -41,8 +39,6 @@ public:
 	CoreBuffer<uchar>* buildTemp = 0;		// reusable temporary buffer for Optix BVH construction
 	CoreBuffer<uchar>* buildBuffer = 0;		// reusable target buffer for Optix BVH construction
 	// aceleration structure
-	bool allowCompaction = false;			// static geometry will be built using compaction, animation without
-	bool accstrucNeedsUpdate = false;		// set to false when geometry is changed
 	uint32_t inputFlags[1] = { OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT /* handled in CUDA shading code instead */ };
 	OptixBuildInput buildInput;				// acceleration structure build parameters
 	OptixAccelBuildOptions buildOptions;	// acceleration structure build options
@@ -50,7 +46,7 @@ public:
 	OptixTraversableHandle gasHandle;		// handle to the mesh BVH
 	CUdeviceptr gasData;					// acceleration structure data
 	// global access
-	static inline RenderCore* renderCore = 0; // for access to material list, in case of alpha mapped triangles
+	static RenderCore* renderCore;			// for access to material list, in case of alpha mapped triangles
 };
 
 //  +-----------------------------------------------------------------------------+

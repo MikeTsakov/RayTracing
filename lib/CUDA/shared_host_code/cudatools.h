@@ -1,4 +1,4 @@
-/* cudatools.h - Copyright 2019/2021 Utrecht University
+/* cudatools.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,14 +17,23 @@
 
 #include <cstdint>
 
-enum { NOT_ALLOCATED = 0, ON_HOST = 1, ON_DEVICE = 2, STAGED = 4 };
-enum { POLICY_DEFAULT = 0, POLICY_COPY_SOURCE };
+enum { NOT_ALLOCATED = 0, ON_HOST = 1, ON_DEVICE = 2 };
 
-#define CHK_CUDA( stmt ) do { auto ret = ( stmt ); if ( ret ) {                                      \
-if ( !strncmp( #stmt, "cudaGraphicsGLRegisterImage", sizeof( "cudaGraphicsGLRegisterImage" ) - 1 ) ) \
-FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "\n\t(Are you running using the IGP?\n"         \
-"Use NVIDIA control panel to enable the high performance GPU.)" ) else                               \
-FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "" ) } } while ( 0 )
+#define CHK_CUDA( stmt )                                                                                         \
+	do                                                                                                           \
+	{                                                                                                            \
+		auto ret = ( stmt );                                                                                     \
+		if ( ret )                                                                                               \
+		{                                                                                                        \
+			if ( !strncmp( #stmt, "cudaGraphicsGLRegisterImage", sizeof( "cudaGraphicsGLRegisterImage" ) - 1 ) ) \
+				FATALERROR_IN( #stmt, CUDATools::decodeError( ret ),                                             \
+							   "\n\t(Are you running using the IGP?\n"                                           \
+							   "Use NVIDIA control panel to enable the high performance GPU.)" )                 \
+			else                                                                                                 \
+				FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "" )                                        \
+		}                                                                                                        \
+	} while ( 0 )
+
 #define CHK_NVRTC( stmt ) FATALERROR_IN_CALL( ( stmt ), nvrtcGetErrorString, "" )
 
 class CUDATools
@@ -56,7 +65,7 @@ public:
 		uint64_t max_perf = 0;
 		cudaDeviceProp deviceProp;
 		cudaGetDeviceCount( &count );
-		if (count == 0) FatalError( "No CUDA devices found.\nIf you do have an NVIDIA GPU, consider updating your drivers." );
+		if (count == 0) exit( EXIT_FAILURE );
 		while (curdev < count)
 		{
 			cudaGetDeviceProperties( &deviceProp, curdev );
@@ -74,12 +83,17 @@ public:
 			else prohibited++;
 			++curdev;
 		}
-		if (prohibited == count) FatalError( "All CUDA devices are prohibited from use." );
+		if (prohibited == count) exit( EXIT_FAILURE );
 		return fastest;
+	}
+	static void fail( const char* t )
+	{
+		printf( t );
+		while (1) exit( 0 );
 	}
 	static const char* decodeError( cudaError_t res )
 	{
-		switch (res)
+		switch ((cudaError_enum)res)
 		{
 		default:                                        return "Unknown cudaError_t";
 		case CUDA_SUCCESS:                              return "No error";
@@ -129,14 +143,14 @@ public:
 		case CUDA_ERROR_MISALIGNED_ADDRESS:             return "Misaligned address";
 		}
 	}
-	static void compileToPTX( string& ptx, const char* cuSource, const char* sourceDir, const int cc, const int optixVer )
+	static void compileToPTX( string &ptx, const char* cuSource, const char* sourceDir, const int cc, const int optixVer )
 	{
 		// create program
 		nvrtcProgram prog = 0;
 		CHK_NVRTC( nvrtcCreateProgram( &prog, cuSource, 0, 0, NULL, NULL ) );
 		// gather NVRTC options
 		vector<const char*> options;
-	#if 1
+	#if 0
 		// @Marijn: this doesn't work. Optix is used in several versions, distributed with LH2.
 		// TODO: Throw FatalError if no path is defined for the requested OptiX version!
 		if (optixVer > 6)
@@ -144,7 +158,7 @@ public:
 		#ifdef OPTIX_INCLUDE_PATH
 			options.push_back( "-I" OPTIX_INCLUDE_PATH );
 		#else
-			options.push_back( "-I../../lib/OptiX7/include" );
+			FATALERROR( "No include path defined for OptiX %d!", optixVer );
 		#endif
 		}
 		else
@@ -152,7 +166,7 @@ public:
 		#ifdef OPTIX_6_INCLUDE_PATH
 			options.push_back( "-I" OPTIX_6_INCLUDE_PATH );
 		#else
-			options.push_back( "-I../../lib/OptiX/include" );
+			FATALERROR( "No include path defined for OptiX %d!", optixVer );
 		#endif
 		}
 	#else
@@ -197,7 +211,7 @@ template <class T> class CoreBuffer
 {
 public:
 	CoreBuffer() = default;
-	CoreBuffer( uint64_t elements, uint64_t loc, const void* source = 0, const int policy = POLICY_DEFAULT ) : location( loc )
+	CoreBuffer( uint64_t elements, uint64_t loc, const void* source = 0 ) : location( loc )
 	{
 		numElements = elements;
 		sizeInBytes = elements * sizeof( T );
@@ -214,12 +228,7 @@ public:
 				// location is ON_HOST; use supplied pointer or allocate room if no source was specified
 				if (source)
 				{
-					if (policy == POLICY_DEFAULT) hostPtr = (T*)source; else
-					{
-						// POLICY_COPY_SOURCE: pointer was supplied, and we are supposed to copy it
-						hostPtr = (T*)MALLOC64( sizeInBytes ), owner |= ON_HOST;
-						memcpy( hostPtr, source, sizeInBytes );
-					}
+					hostPtr = (T*)source;
 					if (location & ON_DEVICE) CopyToDevice();
 				}
 				else
@@ -231,7 +240,7 @@ public:
 			{
 				// location is ON_DEVICE only, and we have data, so send the data over
 				hostPtr = (T*)source;
-				if ((location & STAGED) == 0) CopyToDevice();
+				CopyToDevice();
 				hostPtr = 0;
 			}
 		}
@@ -253,7 +262,7 @@ public:
 			}
 		}
 	}
-	T* CopyToDevice()
+	void* CopyToDevice()
 	{
 		if (sizeInBytes > 0)
 		{
@@ -267,7 +276,7 @@ public:
 		}
 		return devPtr;
 	}
-	T* StageCopyToDevice()
+	void* CopyToDeviceAsync( cudaStream_t stream )
 	{
 		if (sizeInBytes > 0)
 		{
@@ -277,11 +286,11 @@ public:
 				location |= ON_DEVICE;
 				owner |= ON_DEVICE;
 			}
-			stageMemcpy( devPtr, hostPtr, sizeInBytes );
+			CHK_CUDA( cudaMemcpyAsync( devPtr, hostPtr, sizeInBytes, cudaMemcpyHostToDevice, stream ) );
 		}
 		return devPtr;
 	}
-	T* MoveToDevice()
+	void* MoveToDevice()
 	{
 		CopyToDevice();
 		if (sizeInBytes > 0) FREE64( hostPtr );
@@ -301,6 +310,20 @@ public:
 				owner |= ON_HOST;
 			}
 			CHK_CUDA( cudaMemcpy( hostPtr, devPtr, sizeInBytes, cudaMemcpyDeviceToHost ) );
+		}
+		return hostPtr;
+	}
+	T* CopyToHostAsync( cudaStream_t stream )
+	{
+		if (sizeInBytes > 0)
+		{
+			if (!(location & ON_HOST))
+			{
+				hostPtr = (T*)MALLOC64( sizeInBytes );
+				location |= ON_HOST;
+				owner |= ON_HOST;
+			}
+			CHK_CUDA( cudaMemcpyAsync( hostPtr, devPtr, sizeInBytes, cudaMemcpyDeviceToHost, stream ) );
 		}
 		return hostPtr;
 	}

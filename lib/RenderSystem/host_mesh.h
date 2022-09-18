@@ -1,4 +1,4 @@
-/* host_mesh.h - Copyright 2019/2021 Utrecht University
+/* host_mesh.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -51,17 +51,17 @@ public:
 	HostMesh() = default;
 	HostMesh( const int triCount );
 	HostMesh( const char* name, const char* dir, const float scale = 1.0f, const bool flatShaded = false );
-	HostMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const vector<int>& matIdx, const int materialOverride = -1 );
+	HostMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const int matIdxOffset, const int materialOverride = -1 );
 	~HostMesh();
 	// methods
 	void LoadGeometry( const char* file, const char* dir, const float scale = 1.0f, const bool flatShaded = false );
 	void LoadGeometryFromOBJ( const string& fileName, const char* directory, const mat4& transform, const bool flatShaded = false );
-	void ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const vector<int>& matIdx, const int materialOverride );
+	void ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltfModel& gltfModel, const int matIdxOffset, const int materialOverride );
 	void BuildFromIndexedData( const vector<int>& tmpIndices, const vector<float3>& tmpVertices,
-		const vector<float3>& tmpNormals, const vector<float2>& tmpUvs, const vector<float2>& tmpUv2s,
-		const vector<float4>& tmpTs, const vector<Pose>& tmpPoses,
+		const vector<float3>& tmpNormals, const vector<float2>& tmpUvs, const vector<Pose>& tmpPoses,
 		const vector<uint4>& tmpJoints, const vector<float4>& tmpWeights, const int materialIdx );
 	void BuildMaterialList();
+	void UpdateAlphaFlags();
 	void SetPose( const vector<float>& weights );
 	void SetPose( const HostSkin* skin );
 	// data members
@@ -73,6 +73,7 @@ public:
 	vector<float3> origNormal;					// skinning: base pose normals
 	vector<HostTri> triangles;					// full triangles
 	vector<int> materialList;					// list of materials used by the mesh; used to efficiently track light changes
+	vector<uint> alphaFlags;					// list containing 1 for each triangle that is flagged as HASALPHA, 0 otherwise 
 	vector<uint4> joints;						// skinning: joints
 	vector<float4> weights;						// skinning: joint weights
 	vector<Pose> poses;							// morph target data

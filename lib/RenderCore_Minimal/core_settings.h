@@ -1,4 +1,4 @@
-/* core_settings.h - Copyright 2019/2021 Utrecht University
+/* core_settings.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,11 +22,28 @@
 
 #include "platform.h"
 
+#ifdef _DEBUG
+#pragma comment(lib, "../platform/lib/debug/platform.lib" )
+#else
+#pragma comment(lib, "../platform/lib/release/platform.lib" )
+#endif
+
 using namespace lighthouse2;
 
 #include "core_api_base.h"
+#include "core_api.h"
+#include "omp.h"
+
+#include "light.h"
+#include "texture.h"
+#include "material.h"
+#include "hitinfo.h"
+#include "ray.h"
+#include "mesh.h"
+
 #include "rendercore.h"
 
 using namespace lh2core;
+
 
 // EOF

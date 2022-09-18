@@ -1,4 +1,4 @@
-/* rendercore.h - Copyright 2019/2020 Utrecht University
+/* rendercore.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -45,48 +45,39 @@ struct DeviceVars
 //  |  RenderCore                                                                 |
 //  |  Encapsulates device code.                                            LH2'19|
 //  +-----------------------------------------------------------------------------+
-class RenderCore : public CoreAPI_Base
+class RenderCore
 {
 public:
 	// methods
 	void Init();
-	void Render( const ViewPyramid& view, const Convergence converge, bool async );
-	void WaitForRender() { /* this core does not support asynchronous rendering yet */ }
+	void Render( const ViewPyramid& view, const Convergence converge );
 	void Setting( const char* name, const float value );
 	void SetTarget( GLTexture* target, const uint spp );
 	void Shutdown();
+	void KeyDown( const uint key ) {}
+	void KeyUp( const uint key ) {}
 	// passing data. Note: RenderCore always copies what it needs; the passed data thus remains the
 	// property of the caller, and can be safely deleted or modified as soon as these calls return.
 	void SetTextures( const CoreTexDesc* tex, const int textureCount );
-	void SetMaterials( CoreMaterial* mat, const int materialCount ); // textures must be in sync when calling this
+	void SetMaterials( CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount ); // textures must be in sync when calling this
 	void SetLights( const CoreLightTri* areaLights, const int areaLightCount,
 		const CorePointLight* pointLights, const int pointLightCount,
 		const CoreSpotLight* spotLights, const int spotLightCount,
 		const CoreDirectionalLight* directionalLights, const int directionalLightCount );
-	void SetSkyData( const float3* pixels, const uint width, const uint height, const mat4& worldToLight );
+	void SetSkyData( const float3* pixels, const uint width, const uint height );
 	// geometry and instances:
 	// a scene is setup by first passing a number of meshes (geometry), then a number of instances.
 	// note that stored meshes can be used zero, one or multiple times in the scene.
 	// also note that, when using alpha flags, materials must be in sync.
-	void SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles );
+	void SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles, const uint* alphaFlags = 0 );
 	void SetInstance( const int instanceIdx, const int modelIdx, const mat4& transform );
-	void FinalizeInstances();
+	void UpdateToplevel();
 	int4 GetScreenParams();
 	void SetProbePos( const int2 pos );
-	CoreStats GetCoreStats() const override;
+	CoreMaterial& GetCoreMaterial( int materialIdx ) { return materialBuffer->HostPtr()[materialIdx]; }
 	// internal methods
 private:
-	void UpdateToplevel();
 	void SyncStorageType( const TexelStorage storage );
-	// helpers
-	template <class T> CUDAMaterial::Map Map( T v )
-	{
-		CUDAMaterial::Map m;
-		CoreTexDesc& t = texDescs[v.textureID];
-		m.width = t.width, m.height = t.height, m.uscale = v.uvscale.x, m.vscale = v.uvscale.y;
-		m.uoffs = v.uvoffset.x, m.voffs = v.uvoffset.y, m.addr = t.firstPixel;
-		return m;
-	}
 	// data members
 	int scrwidth = 0, scrheight = 0;				// current screen width and height
 	int scrspp = 1;									// samples to be taken per screen pixel
@@ -98,15 +89,15 @@ private:
 	vector<CoreInstance*> instances;					// list of instances: model id plus transform
 	bool instancesDirty = true;						// we need to sync the instance array to the device
 	InteropTexture renderTarget;					// CUDA will render to this texture
-	CoreBuffer<CUDAMaterial>* materialBuffer = 0;	// material array
-	CUDAMaterial* hostMaterialBuffer = 0;			// core-managed copy of the materials
+	CoreBuffer<CoreMaterial>* materialBuffer = 0;	// material array
+	CoreMaterial* hostMaterialBuffer = 0;			// core-managed host-side copy of the materials for alpha tris
 	CoreBuffer<CoreLightTri>* areaLightBuffer;		// area lights
 	CoreBuffer<CorePointLight>* pointLightBuffer;	// point lights
 	CoreBuffer<CoreSpotLight>* spotLightBuffer;		// spot lights
 	CoreBuffer<CoreDirectionalLight>* directionalLightBuffer;	// directional lights
 	CoreBuffer<float4>* texel128Buffer = 0;			// texel buffer 1: hdr ARGB128 texture data
 	CoreBuffer<uint>* normal32Buffer = 0;			// texel buffer 2: integer-encoded normals
-	CoreBuffer<float4>* skyPixelBuffer = 0;			// skydome texture data
+	CoreBuffer<float3>* skyPixelBuffer = 0;			// skydome texture data
 	RTPmodel* topLevel = 0;							// the top-level node; combines all instances and is the entry point for ray queries
 	CoreBuffer<float4>* accumulator = 0;			// accumulator buffer for the path tracer
 	CoreBuffer<Counters>* counterBuffer = 0;		// counters for persistent threads

@@ -1,4 +1,4 @@
-/* camera.cu - Copyright 2019/2021 Utrecht University
+/* camera.cu - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -146,7 +146,6 @@ void extendLightPathKernel( int smcount, BiPathState* pathStateData,
 
 	float3 R;
 	float r4, r5;
-	uint seed = WangHash( jobIndex * 17 + R0 );
 	if (false && sampleIndex < 256)
 	{
 		r4 = blueNoiseSampler( blueNoise, x, y, sampleIndex, 0 );
@@ -154,13 +153,14 @@ void extendLightPathKernel( int smcount, BiPathState* pathStateData,
 	}
 	else
 	{
+		uint seed = WangHash( jobIndex * 17 + R0 );
 		r4 = RandomFloat( seed );
 		r5 = RandomFloat( seed );
 	}
 
-	bool specular = false;
-	const float3 bsdf = SampleBSDF( shadingData, fN, N, T, dir * -1.0f, HIT_T, r4, r5, RandomFloat( seed ), R, pdf_solidangle, specular, type );
-	if (specular) FLAGS_L |= S_SPECULAR;
+    bool specular = false;
+	const float3 bsdf = SampleBSDF( shadingData, fN, N, T, dir * -1.0f, HIT_T, r4, r5, R, pdf_solidangle, specular,type);
+    if (specular) FLAGS_L |= S_SPECULAR;
 
 	if (!(pdf_solidangle < EPSILON || isnan( pdf_solidangle )))
 	{
@@ -206,7 +206,7 @@ void extendLightPathKernel( int smcount, BiPathState* pathStateData,
 		pdf_ = 0.0f; // terminate the eye path extension
 	}
 	else if (t < MAX_LIGHTPATH) // reduce this query
-	#endif
+#endif
 	{
 		randomWalkRayIdx = atomicAdd( &counters->randomWalkRays, 1 );
 		randomWalkRays[randomWalkRayIdx].O4 = make_float4( SafeOrigin( I, R, N, geometryEpsilon ), 0 );

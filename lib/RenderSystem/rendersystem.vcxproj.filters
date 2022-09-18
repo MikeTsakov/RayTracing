@@ -27,6 +27,9 @@
     <ClCompile Include="host_light.cpp">
       <Filter>scene</Filter>
     </ClCompile>
+    <ClCompile Include="host_mesh_tinyobj.cpp">
+      <Filter>scene</Filter>
+    </ClCompile>
     <ClCompile Include="core_api_base.cpp">
       <Filter>API</Filter>
     </ClCompile>
@@ -35,24 +38,6 @@
     </ClCompile>
     <ClCompile Include="host_anim.cpp">
       <Filter>scene</Filter>
-    </ClCompile>
-    <ClCompile Include="materials\pbrt\api.cpp">
-      <Filter>scene\pbrt</Filter>
-    </ClCompile>
-    <ClCompile Include="materials\pbrt\paramset.cpp">
-      <Filter>scene\pbrt</Filter>
-    </ClCompile>
-    <ClCompile Include="materials\pbrt\spectrum.cpp">
-      <Filter>scene\pbrt</Filter>
-    </ClCompile>
-    <ClCompile Include="host_meshloaders.cpp">
-      <Filter>scene</Filter>
-    </ClCompile>
-    <ClCompile Include="materials\pbrt\plymesh.cpp">
-      <Filter>scene\pbrt</Filter>
-    </ClCompile>
-    <ClCompile Include="materials\pbrt\pbrtparser.cpp">
-      <Filter>scene\pbrt</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -100,18 +85,6 @@
     <ClInclude Include="host_anim.h">
       <Filter>scene</Filter>
     </ClInclude>
-    <ClInclude Include="common_functions.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="materials\pbrt\spectrum.h">
-      <Filter>scene\pbrt</Filter>
-    </ClInclude>
-    <ClInclude Include="materials\pbrt\pbrtparser.h">
-      <Filter>scene\pbrt</Filter>
-    </ClInclude>
-    <ClInclude Include="common_bluenoise.h">
-      <Filter>common</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="scene">
@@ -125,9 +98,6 @@
     </Filter>
     <Filter Include="common">
       <UniqueIdentifier>{dda54bf1-5a52-45e2-9ba4-c7b2bb86bce3}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="scene\pbrt">
-      <UniqueIdentifier>{7527da49-fdab-4e25-991b-4026ec56e9c4}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

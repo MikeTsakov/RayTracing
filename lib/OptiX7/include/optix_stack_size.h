@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,7 @@
 #ifndef __optix_optix_stack_size_h__
 #define __optix_optix_stack_size_h__
 
-#include "optix.h"
+#include <optix.h>
 
 #include <algorithm>
 #include <cstring>
@@ -42,14 +42,10 @@
 extern "C" {
 #endif
 
-/** \addtogroup optix_utilities
-@{
-*/
-
 /// Retrieves direct and continuation stack sizes for each program in the program group and accumulates the upper bounds
 /// in the correponding output variables based on the semantic type of the program. Before the first invocation of this
-/// function with a given instance of #OptixStackSizes, the members of that instance should be set to 0.
-inline OptixResult optixUtilAccumulateStackSizes( OptixProgramGroup programGroup, OptixStackSizes* stackSizes )
+/// function with a given instance of OptixStackSizes, the members of that instance should be set to 0.
+OptixResult optixUtilAccumulateStackSizes( OptixProgramGroup programGroup, OptixStackSizes* stackSizes )
 {
     if( !stackSizes )
         return OPTIX_ERROR_INVALID_VALUE;
@@ -75,7 +71,7 @@ inline OptixResult optixUtilAccumulateStackSizes( OptixProgramGroup programGroup
 /// See the programming guide for an explanation of the formula.
 ///
 /// \param[in] stackSizes                              Accumulated stack sizes of all programs in the call graph.
-/// \param[in] maxTraceDepth                           Maximum depth of #optixTrace() calls.
+/// \param[in] maxTraceDepth                           Maximum depth of optixTrace() calls.
 /// \param[in] maxCCDepth                              Maximum depth of calls trees of continuation callables.
 /// \param[in] maxDCDepth                              Maximum depth of calls trees of direct callables.
 /// \param[out] directCallableStackSizeFromTraversal   Direct stack size requirement for direct callables invoked from
@@ -83,13 +79,13 @@ inline OptixResult optixUtilAccumulateStackSizes( OptixProgramGroup programGroup
 /// \param[out] directCallableStackSizeFromState       Direct stack size requirement for direct callables invoked from
 ///                                                    RG, MS, or CH.
 /// \param[out] continuationStackSize                  Continuation stack requirement.
-inline OptixResult optixUtilComputeStackSizes( const OptixStackSizes* stackSizes,
-                                               unsigned int           maxTraceDepth,
-                                               unsigned int           maxCCDepth,
-                                               unsigned int           maxDCDepth,
-                                               unsigned int*          directCallableStackSizeFromTraversal,
-                                               unsigned int*          directCallableStackSizeFromState,
-                                               unsigned int*          continuationStackSize )
+OptixResult optixUtilComputeStackSizes( const OptixStackSizes* stackSizes,
+                                        unsigned int           maxTraceDepth,
+                                        unsigned int           maxCCDepth,
+                                        unsigned int           maxDCDepth,
+                                        unsigned int*          directCallableStackSizeFromTraversal,
+                                        unsigned int*          directCallableStackSizeFromState,
+                                        unsigned int*          continuationStackSize )
 {
     if( !stackSizes )
         return OPTIX_ERROR_INVALID_VALUE;
@@ -127,7 +123,7 @@ inline OptixResult optixUtilComputeStackSizes( const OptixStackSizes* stackSizes
 
 /// Computes the stack size values needed to configure a pipeline.
 ///
-/// This variant is similar to #optixUtilComputeStackSizes(), except that it expects the values dssDC and
+/// This variant is similar to optixUtilComputeStackSizes(), except that it expects the values dssDC and
 /// maxDCDepth split by call site semantic.
 ///
 /// See programming guide for an explanation of the formula.
@@ -137,7 +133,7 @@ inline OptixResult optixUtilComputeStackSizes( const OptixStackSizes* stackSizes
 ///                                                    or AH.
 /// \param[in] dssDCFromState                          Accumulated direct stack size of all DC programs invoked from RG,
 ///                                                    MS, or CH.
-/// \param[in] maxTraceDepth                           Maximum depth of #optixTrace() calls.
+/// \param[in] maxTraceDepth                           Maximum depth of optixTrace() calls.
 /// \param[in] maxCCDepth                              Maximum depth of calls trees of continuation callables.
 /// \param[in] maxDCDepthFromTraversal                 Maximum depth of calls trees of direct callables invoked from IS
 ///                                                    or AH.
@@ -148,16 +144,16 @@ inline OptixResult optixUtilComputeStackSizes( const OptixStackSizes* stackSizes
 /// \param[out] directCallableStackSizeFromState       Direct stack size requirement for direct callables invoked from
 ///                                                    RG, MS, or CH.
 /// \param[out] continuationStackSize                  Continuation stack requirement.
-inline OptixResult optixUtilComputeStackSizesDCSplit( const OptixStackSizes* stackSizes,
-                                                      unsigned int           dssDCFromTraversal,
-                                                      unsigned int           dssDCFromState,
-                                                      unsigned int           maxTraceDepth,
-                                                      unsigned int           maxCCDepth,
-                                                      unsigned int           maxDCDepthFromTraversal,
-                                                      unsigned int           maxDCDepthFromState,
-                                                      unsigned int*          directCallableStackSizeFromTraversal,
-                                                      unsigned int*          directCallableStackSizeFromState,
-                                                      unsigned int*          continuationStackSize )
+OptixResult optixUtilComputeStackSizesDCSplit( const OptixStackSizes* stackSizes,
+                                               unsigned int           dssDCFromTraversal,
+                                               unsigned int           dssDCFromState,
+                                               unsigned int           maxTraceDepth,
+                                               unsigned int           maxCCDepth,
+                                               unsigned int           maxDCDepthFromTraversal,
+                                               unsigned int           maxDCDepthFromState,
+                                               unsigned int*          directCallableStackSizeFromTraversal,
+                                               unsigned int*          directCallableStackSizeFromState,
+                                               unsigned int*          continuationStackSize )
 {
     if( !stackSizes )
         return OPTIX_ERROR_INVALID_VALUE;
@@ -195,27 +191,27 @@ inline OptixResult optixUtilComputeStackSizesDCSplit( const OptixStackSizes* sta
 
 /// Computes the stack size values needed to configure a pipeline.
 ///
-/// This variant is similar to #optixUtilComputeStackSizes(), except that it expects the value cssCCTree
+/// This variant is similar to optixUtilComputeStackSizes(), except that it expects the value cssCCTree
 /// instead of cssCC and maxCCDepth.
 ///
 /// See programming guide for an explanation of the formula.
 ///
 /// \param[in] stackSizes                              Accumulated stack sizes of all programs in the call graph.
 /// \param[in] cssCCTree                               Maximum stack size used by calls trees of continuation callables.
-/// \param[in] maxTraceDepth                           Maximum depth of #optixTrace() calls.
+/// \param[in] maxTraceDepth                           Maximum depth of optixTrace() calls.
 /// \param[in] maxDCDepth                              Maximum depth of calls trees of direct callables.
 /// \param[out] directCallableStackSizeFromTraversal   Direct stack size requirement for direct callables invoked from
 ///                                                    IS or AH.
 /// \param[out] directCallableStackSizeFromState       Direct stack size requirement for direct callables invoked from
 ///                                                    RG, MS, or CH.
 /// \param[out] continuationStackSize                  Continuation stack requirement.
-inline OptixResult optixUtilComputeStackSizesCssCCTree( const OptixStackSizes* stackSizes,
-                                                        unsigned int           cssCCTree,
-                                                        unsigned int           maxTraceDepth,
-                                                        unsigned int           maxDCDepth,
-                                                        unsigned int*          directCallableStackSizeFromTraversal,
-                                                        unsigned int*          directCallableStackSizeFromState,
-                                                        unsigned int*          continuationStackSize )
+OptixResult optixUtilComputeStackSizesCssCCTree( const OptixStackSizes* stackSizes,
+                                                 unsigned int           cssCCTree,
+                                                 unsigned int           maxTraceDepth,
+                                                 unsigned int           maxDCDepth,
+                                                 unsigned int*          directCallableStackSizeFromTraversal,
+                                                 unsigned int*          directCallableStackSizeFromState,
+                                                 unsigned int*          continuationStackSize )
 {
     if( !stackSizes )
         return OPTIX_ERROR_INVALID_VALUE;
@@ -250,7 +246,7 @@ inline OptixResult optixUtilComputeStackSizesCssCCTree( const OptixStackSizes* s
 
 /// Computes the stack size values needed to configure a pipeline.
 ///
-/// This variant is a specialization of #optixUtilComputeStackSizes() for a simple path tracer with the following
+/// This variant is a specialization of optixUtilComputeStackSizes() for a simple path tracer with the following
 /// assumptions: There are only two ray types, camera rays and shadow rays. There are only RG, MS, and CH programs, and
 /// no AH, IS, CC, or DC programs. The camera rays invoke only the miss and closest hit programs MS1 and CH1,
 /// respectively. The CH1 program might trace shadow rays, which invoke only the miss and closest hit programs MS2 and
@@ -260,16 +256,16 @@ inline OptixResult optixUtilComputeStackSizesCssCCTree( const OptixStackSizes* s
 /// groups, and compute the maximas of the stack size requirements per array.
 ///
 /// See programming guide for an explanation of the formula.
-inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup        programGroupRG,
-                                                               OptixProgramGroup        programGroupMS1,
-                                                               const OptixProgramGroup* programGroupCH1,
-                                                               unsigned int             programGroupCH1Count,
-                                                               OptixProgramGroup        programGroupMS2,
-                                                               const OptixProgramGroup* programGroupCH2,
-                                                               unsigned int             programGroupCH2Count,
-                                                               unsigned int* directCallableStackSizeFromTraversal,
-                                                               unsigned int* directCallableStackSizeFromState,
-                                                               unsigned int* continuationStackSize )
+OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup        programGroupRG,
+                                                        OptixProgramGroup        programGroupMS1,
+                                                        const OptixProgramGroup* programGroupCH1,
+                                                        unsigned int             programGroupCH1Count,
+                                                        OptixProgramGroup        programGroupMS2,
+                                                        const OptixProgramGroup* programGroupCH2,
+                                                        unsigned int             programGroupCH2Count,
+                                                        unsigned int*            directCallableStackSizeFromTraversal,
+                                                        unsigned int*            directCallableStackSizeFromState,
+                                                        unsigned int*            continuationStackSize )
 {
     if( !programGroupCH1 && ( programGroupCH1Count > 0 ) )
         return OPTIX_ERROR_INVALID_VALUE;
@@ -327,8 +323,6 @@ inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup
 
     return OPTIX_SUCCESS;
 }
-
-/*@}*/  // end group optix_utilities
 
 #ifdef __cplusplus
 }

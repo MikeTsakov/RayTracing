@@ -1,4 +1,4 @@
-/* host_light.h - Copyright 2019/2021 Utrecht University
+/* host_light.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -19,15 +19,15 @@ namespace lighthouse2
 {
 
 //  +-----------------------------------------------------------------------------+
-//  |  HostTriLight                                                               |
-//  |  Host-side light triangle.                                            LH2'20|
+//  |  HostAreaLight                                                              |
+//  |  Host-side light tri.                                                 LH2'19|
 //  +-----------------------------------------------------------------------------+
-class HostTriLight
+class HostAreaLight
 {
 public:
 	// constructor / destructor
-	HostTriLight() = default;
-	HostTriLight( HostTri* origTri, int origIdx, int origInstance );
+	HostAreaLight() = default;
+	HostAreaLight( HostTri* origTri, int origIdx, int origInstance );
 	// methods
 	CoreLightTri ConvertToCoreLightTri();
 	// data members
@@ -58,6 +58,7 @@ public:
 	CorePointLight ConvertToCorePointLight();
 	// data members
 	float3 position = make_float3( 0 );
+	float energy = 0;
 	float3 radiance = make_float3( 0 );
 	int ID = 0;
 	bool enabled = true;
@@ -99,6 +100,7 @@ public:
 	CoreDirectionalLight ConvertToCoreDirectionalLight();
 	// data members
 	float3 direction = make_float3( 0, -1, 0 );
+	float energy = 0;
 	float3 radiance = make_float3( 0 );
 	int ID = 0;
 	bool enabled = true;

@@ -1,4 +1,4 @@
-/* rendersystem.h - Copyright 2019/2021 Utrecht University
+/* rendersystem.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #pragma once
 
 #include "system.h"
+#include "core_api_base.h"
 #ifdef RENDERSYSTEMBUILD
 // we will not expose these to the host application
 #define TINYGLTF_NO_STB_IMAGE_WRITE
@@ -52,7 +53,6 @@ typedef int tinyobjMaterial;
 #include "host_anim.h"
 #include "host_scene.h"
 #include "host_node.h"
-#include "core_api_base.h"
 #include "render_api.h"
 
 #ifdef RENDERSYSTEMBUILD
@@ -64,7 +64,7 @@ namespace lighthouse2
 
 struct RenderSettings
 {
-	float geometryEpsilon = 1.0e-3f;
+	float geometryEpsilon = 1.0e-4f;
 	float filterDirectClamp = 15.0f;
 	float filterIndirectClamp = 2.5f;
 	uint filterEnabled = 1;
@@ -81,11 +81,9 @@ public:
 	// methods
 	void Init( const char* dllName );
 	void SynchronizeSceneData();
-	void Render( const ViewPyramid& view, Convergence converge, bool async = false );
-	void WaitForRender();
+	void Render( const ViewPyramid& view, Convergence converge );
 	void SetTarget( GLTexture* target, const uint spp );
 	void SetProbePos( int2 pos ) { if (core) core->SetProbePos( pos ); }
-	void Setting( const char* name, const float value ) { if (core) core->Setting( name, value ); }
 	int GetTriangleMaterial( const int coreInstId, const int coreTriId );
 	int GetTriangleMesh( const int coreInstId, const int coreTriId );
 	int GetTriangleNode( const int coreInstId, const int coreTriId );

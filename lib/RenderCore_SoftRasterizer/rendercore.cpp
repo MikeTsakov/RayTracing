@@ -1,4 +1,4 @@
-﻿/* rendercore.cpp - Copyright 2019/2021 Utrecht University
+﻿/* rendercore.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -32,11 +32,6 @@ void RenderCore::SetProbePos( int2 pos )
 //  +-----------------------------------------------------------------------------+
 void RenderCore::Init()
 {
-#ifdef _DEBUG
-	printf( "Initializing SoftRasterizer core - DEBUG build.\n" );
-#else
-	printf( "Initializing SoftRasterizer core - RELEASE build.\n" );
-#endif
 	// initialize scene
 	rasterizer.Init();
 	rasterizer.scene.root = new SGNode();
@@ -72,7 +67,7 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 //  |  RenderCore::SetGeometry                                                    |
 //  |  Set the geometry data for a model.                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles )
+void RenderCore::SetGeometry( const int meshIdx, const float4* vertexData, const int vertexCount, const int triangleCount, const CoreTri* triangles, const uint* alphaFlags )
 {
 	// Note: for first-time setup, meshes are expected to be passed in sequential order.
 	// This will result in new Mesh pointers being pushed into the meshes vector.
@@ -108,7 +103,7 @@ void RenderCore::SetInstance( const int instanceIdx, const int meshIdx, const ma
 	// adjust the instances vector if we have more.
 	if (meshIdx == -1)
 	{
-		if (rasterizer.scene.root->child.size() > instanceIdx)
+		if (rasterizer.scene.root->child.size() > instanceIdx) 
 			rasterizer.scene.root->child.resize( instanceIdx );
 		return;
 	}
@@ -141,7 +136,7 @@ void RenderCore::SetTextures( const CoreTexDesc* tex, const int textures )
 		t->pixels = (uint*)MALLOC64( tex[i].pixelCount * sizeof( uint ) );
 		if (tex[i].idata) memcpy( t->pixels, tex[i].idata, tex[i].pixelCount * sizeof( uint ) );
 		else memcpy( t->pixels, 0, tex[i].pixelCount * sizeof( uint ) /* assume integer textures */ );
-		t->width = tex[i].width, t->height = tex[i].height;
+		// Note: texture width and height are not known yet, will be set when we get the materials.
 	}
 }
 
@@ -149,7 +144,7 @@ void RenderCore::SetTextures( const CoreTexDesc* tex, const int textures )
 //  |  RenderCore::SetMaterials                                                   |
 //  |  Set the material data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
+void RenderCore::SetMaterials( CoreMaterial* mat, const CoreMaterialEx* matEx, const int materialCount )
 {
 	// copy the supplied array of materials
 	for (int i = 0; i < materialCount; i++)
@@ -158,17 +153,17 @@ void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
 		if (i < rasterizer.scene.matList.size()) m = rasterizer.scene.matList[i];
 		else rasterizer.scene.matList.push_back( m = new Material() );
 		m->texture = 0;
-		int texID = mat[i].color.textureID;
+		int texID = matEx[i].texture[TEXTURE0];
 		if (texID == -1)
 		{
-			float r = mat[i].color.value.x;
-			float g = mat[i].color.value.y;
-			float b = mat[i].color.value.z;
+			float r = mat[i].diffuse_r, g = mat[i].diffuse_g, b = mat[i].diffuse_b;
 			m->diffuse = ((int)(b * 255.0f) << 16) + ((int)(g * 255.0f) << 8) + (int)(r * 255.0f);
 		}
 		else
 		{
 			m->texture = rasterizer.scene.texList[texID];
+			m->texture->width = mat[i].texwidth0; // we know this only now, so set it properly
+			m->texture->height = mat[i].texheight0;
 		}
 	}
 }
@@ -177,7 +172,7 @@ void RenderCore::SetMaterials( CoreMaterial* mat, const int materialCount )
 //  |  RenderCore::SetLights                                                      |
 //  |  Set the light data.                                                  LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetLights( const CoreLightTri* triLights, const int triLightCount,
+void RenderCore::SetLights( const CoreLightTri* areaLights, const int areaLightCount,
 	const CorePointLight* pointLights, const int pointLightCount,
 	const CoreSpotLight* spotLights, const int spotLightCount,
 	const CoreDirectionalLight* directionalLights, const int directionalLightCount )
@@ -189,7 +184,7 @@ void RenderCore::SetLights( const CoreLightTri* triLights, const int triLightCou
 //  |  RenderCore::SetSkyData                                                     |
 //  |  Set the sky dome data.                                               LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::SetSkyData( const float3* pixels, const uint width, const uint height, const mat4& /* worldToLight */ )
+void RenderCore::SetSkyData( const float3* pixels, const uint width, const uint height )
 {
 	// not supported yet
 }
@@ -207,7 +202,7 @@ void RenderCore::Setting( const char* name, const float value )
 //  |  RenderCore::Render                                                         |
 //  |  Produce one image.                                                   LH2'19|
 //  +-----------------------------------------------------------------------------+
-void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bool async )
+void RenderCore::Render( const ViewPyramid& view, const Convergence converge )
 {
 	// render
 	mat4 transform;
@@ -229,15 +224,6 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 void RenderCore::Shutdown()
 {
 	delete renderTarget;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  RenderCore::GetCoreStats                                                   |
-//  |  Get a copy of the counters.                                          LH2'19|
-//  +-----------------------------------------------------------------------------+
-CoreStats RenderCore::GetCoreStats() const
-{
-	return coreStats;
 }
 
 // EOF

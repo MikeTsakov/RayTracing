@@ -1,4 +1,4 @@
-/* pathtracer.cu - Copyright 2019/2020 Utrecht University
+/* pathtracer.cu - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 	// use skydome if we didn't hit any geometry
 	if (PRIMIDX == NOHIT)
 	{
-		float3 contribution = throughput * SampleSkydome( -worldToSky.TransformVector( D ) );
+		float3 contribution = throughput * make_float3( SampleSkydome( D, pathLength ) );
 		accumulator[pixelIdx] += make_float4( contribution, 0 );
 		return;
 	}
@@ -101,10 +101,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 		if (DdotNL > 0) /* lights are not double sided */
 		{
 			float3 contribution = throughput * shadingData.color;
-			if (pathLength == 1 || (FLAGS & S_SPECULAR) || connections == 0)  
-			{
-				accumulator[pixelIdx] += make_float4( contribution, 0 );
-			}
+			if (pathLength == 1 || (FLAGS & S_SPECULAR)) accumulator[pixelIdx] += make_float4( contribution, 0 );
 		}
 		return;
 	}
@@ -120,7 +117,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 	if (faceDir == 1) shadingData.transmittance = make_float3( 0 );
 
 	// next event estimation: connect eye path to light
-	if ((FLAGS & S_SPECULAR) == 0 && connections != 0)
+	if (!(FLAGS & S_SPECULAR))
 	{
 		const float r0 = RandomFloat( seed ), r1 = RandomFloat( seed );
 		float pickProb, lightPdf = 0;
@@ -140,7 +137,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 			float3 contribution = throughput * sampledBSDF * lightColor * (NdotL / (pickProb * lightPdf));
 			// add fire-and-forget shadow ray to the connections buffer
 			const uint shadowRayIdx = atomicAdd( &counters->shadowRays, 1 ); // compaction
-			connections[shadowRayIdx].O4 = make_float4( SafeOrigin( I, L, N, geometryEpsilon ), 0 );
+			connections[shadowRayIdx].O4 = make_float4( SafeOrigin( I, L, N * faceDir, geometryEpsilon ), 0 );
 			connections[shadowRayIdx].D4 = make_float4( L, dist - 2 * geometryEpsilon );
 			potentials[shadowRayIdx] = make_float4( contribution, __int_as_float( pixelIdx ) );
 		}
@@ -162,7 +159,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 
 	// write extension ray
 	const uint extensionRayIdx = atomicAdd( &counters->extensionRays, 1 ); // compact
-	extensionRaysOut[extensionRayIdx].O4 = make_float4( SafeOrigin( I, R, N, geometryEpsilon ), 0 );
+	extensionRaysOut[extensionRayIdx].O4 = make_float4( SafeOrigin( I, R, N * faceDir, geometryEpsilon ), 0 );
 	extensionRaysOut[extensionRayIdx].D4 = make_float4( R, 1e34f );
 	pathStateDataOut[extensionRayIdx * 2 + 0] = make_float4( throughput, __uint_as_float( FLAGS ) );
 }

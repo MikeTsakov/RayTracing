@@ -1,4 +1,4 @@
-/* pathtracer.cu - Copyright 2019/2021 Utrecht University
+/* pathtracer.cu - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@
 #define HIT_T hitData.w
 #define RAY_O make_float3( O4 )
 #define FLAGS data
-#define PATHIDX (data >> 6)
+#define PATHIDX (data >> 8)
 
 // helpers for storing filter data
 LH2_DEVFUNC void PackFeatures( uint4& features, const uint albedo, const uint packedNormal, const float t, uint isSpecular, uint matid )
@@ -62,14 +62,14 @@ LH2_DEVFUNC void calculateDepthDerivatives( const int x, const int y, const int 
 //  |  Implements the shade phase of the wavefront path tracer.             LH2'19|
 //  +-----------------------------------------------------------------------------+
 #if __CUDA_ARCH__ > 700 // Volta deliberately excluded
-__global__  __launch_bounds__( 128 /* max block size */, 2 /* min blocks per sm TURING */ )
+__global__  __launch_bounds__( 128 /* max block size */, 4 /* min blocks per sm TURING */ )
 #else
-__global__  __launch_bounds__( 128 /* max block size */, 2 /* min blocks per sm, PASCAL, VOLTA */ )
+__global__  __launch_bounds__( 128 /* max block size */, 8 /* min blocks per sm, PASCAL, VOLTA */ )
 #endif
 void shadeKernel( float4* accumulator, const uint stride,
 	uint4* features, float4* worldPos, float4* deltaDepth,
-	float4* pathStates, float4* hits, float4* connections,
-	const uint R0, const uint* blueNoise, const int blueSlot, const int pass,
+	float4* pathStates, const float4* hits, float4* connections,
+	const uint R0, const uint* blueNoise, const uint blueSlot, const int pass,
 	const int probePixelIdx, const int pathLength, const int w, const int h, const float spreadAngle,
 	const float3 p1, const float3 p2, const float3 p3, const float3 pos, const uint pathCount )
 {
@@ -80,10 +80,8 @@ void shadeKernel( float4* accumulator, const uint stride,
 	// gather data by reading sets of four floats for optimal throughput
 	const float4 O4 = pathStates[jobIndex];				// ray origin xyz, w can be ignored
 	const float4 D4 = pathStates[jobIndex + stride];	// ray direction xyz
-	float4 T4 = pathLength == 1 ? make_float4( 1 ) /* faster */ : pathStates[jobIndex + stride * 2]; // path thoughput rgb
+	float4 T4 = pathLength == 1 ? make_float4( 1 ) /* faster */ : pathStates[jobIndex + stride * 2]; // path thoughput rgb 
 	const float4 hitData = hits[jobIndex];
-	hits[jobIndex].z = __int_as_float( -1 ); // reset for next query
-
 	const float bsdfPdf = T4.w;
 
 	// derived data
@@ -110,7 +108,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 	// use skydome if we didn't hit any geometry
 	if (PRIMIDX == NOHIT)
 	{
-		float3 contribution = throughput * SampleSkydome( -worldToSky.TransformVector( D ) ) * (1.0f / bsdfPdf);
+		float3 contribution = throughput * make_float3( SampleSkydome( D, pathLength ) ) * (1.0f / bsdfPdf);
 		CLAMPINTENSITY; // limit magnitude of thoughput vector to combat fireflies
 		FIXNAN_FLOAT3( contribution );
 		accumulator[pixelIdx] += make_float4( contribution, 0 );
@@ -174,7 +172,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 		float3 contribution = make_float3( 0 ); // initialization required.
 		if (DdotNL > 0 /* lights are not double sided */)
 		{
-			if (pathLength == 1 || (FLAGS & S_SPECULAR) > 0 || connections == 0)
+			if (pathLength == 1 || (FLAGS & S_SPECULAR) > 0)
 			{
 				// accept light contribution if previous vertex was specular
 				contribution = shadingData.color;
@@ -241,7 +239,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 	throughput *= 1.0f / bsdfPdf;
 
 	// next event estimation: connect eye path to light
-	if ((FLAGS & S_SPECULAR) == 0 && connections != 0) // skip for specular vertices
+	if (!(FLAGS & S_SPECULAR)) // skip for specular vertices
 	{
 		float r0, r1, pickProb, lightPdf = 0;
 		if (sampleIdx < 2)
@@ -275,7 +273,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 				CLAMPINTENSITY;
 				// add fire-and-forget shadow ray to the connections buffer
 				const uint shadowRayIdx = atomicAdd( &counters->shadowRays, 1 ); // compaction
-				connections[shadowRayIdx] = make_float4( SafeOrigin( I, L, N, geometryEpsilon ), 0 ); // O4
+				connections[shadowRayIdx] = make_float4( SafeOrigin( I, L, N * faceDir, geometryEpsilon ), 0 ); // O4
 				connections[shadowRayIdx + stride * 2] = make_float4( L, dist - 2 * geometryEpsilon ); // D4
 				connections[shadowRayIdx + stride * 2 * 2] = make_float4( contribution, __int_as_float( pixelIdx ) ); // E4
 			}
@@ -289,7 +287,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 	if (pathLength == MAXPATHLENGTH /* don't fill arrays with rays we won't trace */)
 	{
 		// it ends here, and we didn't finalize the filter data, so store something sensible
-		if (firstHitToBeStored)
+		if (firstHitToBeStored) 
 		{
 			const uint isSpecular = FLAGS & S_VIASPECULAR ? 1 : 0;
 			const uint packedNormal = PackNormal2( N ) + isSpecular;
@@ -314,7 +312,7 @@ void shadeKernel( float4* accumulator, const uint stride,
 		r4 = RandomFloat( seed );
 	}
 	bool specular = false;
-	const float3 bsdf = SampleBSDF( shadingData, fN, N, T, D * -1.0f, HIT_T, r3, r4, RandomFloat( seed ), R, newBsdfPdf, specular );
+	const float3 bsdf = SampleBSDF( shadingData, fN, N, T, D * -1.0f, HIT_T, r3, r4, R, newBsdfPdf, specular );
 	if (newBsdfPdf < EPSILON || isnan( newBsdfPdf )) return;
 	if (specular) FLAGS |= S_SPECULAR;
 
@@ -322,10 +320,10 @@ void shadeKernel( float4* accumulator, const uint stride,
 	const uint extensionRayIdx = atomicAdd( &counters->extensionRays, 1 ); // compact
 	const uint packedNormal = PackNormal( fN * faceDir );
 	if (!(FLAGS & S_SPECULAR)) FLAGS |= S_BOUNCED; else FLAGS |= S_VIASPECULAR;
-	pathStates[extensionRayIdx] = make_float4( SafeOrigin( I, R, N, geometryEpsilon ), __uint_as_float( FLAGS ) );
+	pathStates[extensionRayIdx] = make_float4( SafeOrigin( I, R, N * faceDir, geometryEpsilon ), __uint_as_float( FLAGS ) );
 	pathStates[extensionRayIdx + stride] = make_float4( R, __uint_as_float( packedNormal ) );
 	FIXNAN_FLOAT3( throughput );
-	pathStates[extensionRayIdx + stride * 2] = make_float4( throughput * bsdf * abs( dot( fN, R ) ), newBsdfPdf );
+	pathStates[extensionRayIdx + stride * 2] = make_float4( throughput * bsdf * abs( dot( fN * faceDir, R ) ), newBsdfPdf );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -334,8 +332,8 @@ void shadeKernel( float4* accumulator, const uint stride,
 //  +-----------------------------------------------------------------------------+
 __host__ void shade( const int pathCount, float4* accumulator, const uint stride,
 	uint4* features, float4* worldPos, float4* deltaDepth,
-	float4* pathStates, float4* hits, float4* connections,
-	const uint R0, const uint* blueNoise, const int blueSlot, const int pass,
+	float4* pathStates, const float4* hits, float4* connections,
+	const uint R0, const uint* blueNoise, const uint blueSlot, const int pass,
 	const int probePixelIdx, const int pathLength, const int scrwidth, const int scrheight, const float spreadAngle,
 	const float3 p1, const float3 p2, const float3 p3, const float3 pos )
 {

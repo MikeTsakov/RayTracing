@@ -1,4 +1,4 @@
-/* host_scene.cpp - Copyright 2019/2021 Utrecht University
+/* host_scene.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,9 +15,21 @@
 
 #include "rendersystem.h"
 
-// forward declaration of the PBRT scene loader functions
-void PBRTInit();
-void ParsePBRTScene( std::string filename );
+// static scene data
+HostSkyDome* HostScene::sky = 0;
+vector<int> HostScene::rootNodes;
+vector<HostNode*> HostScene::nodePool;
+vector<HostMesh*> HostScene::meshPool;
+vector<HostSkin*> HostScene::skins;
+vector<HostAnimation*> HostScene::animations;
+vector<HostMaterial*> HostScene::materials;
+vector<HostTexture*> HostScene::textures;
+vector<HostAreaLight*> HostScene::areaLights;
+vector<HostPointLight*> HostScene::pointLights;
+vector<HostSpotLight*> HostScene::spotLights;
+vector<HostDirectionalLight*> HostScene::directionalLights;
+Camera* HostScene::camera = 0;
+int HostScene::nodeListHoles = 0;
 
 //  +-----------------------------------------------------------------------------+
 //  |  HostScene::HostScene                                                       |
@@ -67,27 +79,31 @@ void HostScene::SerializeMaterials( const char* xmlFile )
 		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "id" ) ))->SetText( materials[i]->ID );
 		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "flags" ) ))->SetText( materials[i]->flags );
 		XMLElement* diffuse = doc.NewElement( "color" );
-		diffuse->SetAttribute( "b", materials[i]->color.value.z );
-		diffuse->SetAttribute( "g", materials[i]->color.value.y );
-		diffuse->SetAttribute( "r", materials[i]->color.value.x );
+		diffuse->SetAttribute( "b", materials[i]->color.z );
+		diffuse->SetAttribute( "g", materials[i]->color.y );
+		diffuse->SetAttribute( "r", materials[i]->color.x );
 		(XMLElement*)materialEntry->InsertEndChild( diffuse );
 		XMLElement* absorption = doc.NewElement( "absorption" );
-		absorption->SetAttribute( "b", materials[i]->absorption.value.z );
-		absorption->SetAttribute( "g", materials[i]->absorption.value.y );
-		absorption->SetAttribute( "r", materials[i]->absorption.value.x );
+		absorption->SetAttribute( "b", materials[i]->absorption.z );
+		absorption->SetAttribute( "g", materials[i]->absorption.y );
+		absorption->SetAttribute( "r", materials[i]->absorption.x );
 		(XMLElement*)materialEntry->InsertEndChild( absorption );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "metallic" ) ))->SetText( materials[i]->metallic() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "subsurface" ) ))->SetText( materials[i]->subsurface() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "specular" ) ))->SetText( materials[i]->specular() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "roughness" ) ))->SetText( materials[i]->roughness() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "specularTint" ) ))->SetText( materials[i]->specularTint() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "anisotropic" ) ))->SetText( materials[i]->anisotropic() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "sheen" ) ))->SetText( materials[i]->sheen() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "sheenTint" ) ))->SetText( materials[i]->sheenTint() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "clearcoat" ) ))->SetText( materials[i]->clearcoat() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "clearcoatGloss" ) ))->SetText( materials[i]->clearcoatGloss() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "transmission" ) ))->SetText( materials[i]->transmission() );
-		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "eta" ) ))->SetText( materials[i]->eta() );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "metallic" ) ))->SetText( materials[i]->metallic );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "subsurface" ) ))->SetText( materials[i]->subsurface );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "specular" ) ))->SetText( materials[i]->specular );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "roughness" ) ))->SetText( materials[i]->roughness );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "specularTint" ) ))->SetText( materials[i]->specularTint );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "anisotropic" ) ))->SetText( materials[i]->anisotropic );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "sheen" ) ))->SetText( materials[i]->sheen );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "sheenTint" ) ))->SetText( materials[i]->sheenTint );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "clearcoat" ) ))->SetText( materials[i]->clearcoat );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "clearcoatGloss" ) ))->SetText( materials[i]->clearcoatGloss );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "transmission" ) ))->SetText( materials[i]->transmission );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "eta" ) ))->SetText( materials[i]->eta );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "custom0" ) ))->SetText( materials[i]->custom0 );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "custom1" ) ))->SetText( materials[i]->custom1 );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "custom2" ) ))->SetText( materials[i]->custom2 );
+		((XMLElement*)materialEntry->InsertEndChild( doc.NewElement( "custom3" ) ))->SetText( materials[i]->custom3 );
 	}
 	doc.SaveFile( xmlFile );
 }
@@ -105,42 +121,51 @@ void HostScene::DeserializeMaterials( const char* xmlFile )
 	if (root == nullptr) return;
 	XMLElement* countElement = root->FirstChildElement( "material_count" );
 	if (!countElement) return;
-	const int materialCount = countElement->IntText();
+	int materialCount;
+	const char* t = countElement->GetText();
+	sscanf_s( t, "%i", &materialCount );
+	if (materialCount != materials.size()) return;
 	for (int i = 0; i < materialCount; i++)
 	{
 		// find the entry for the material
+		HostMaterial* m /* for brevity */ = materials[i];
 		char entryName[128];
 		snprintf( entryName, sizeof( entryName ), "material_%i", i );
 		XMLNode* entry = root->FirstChildElement( entryName );
 		if (!entry) continue;
 		// set the properties
 		const char* materialName = entry->FirstChildElement( "name" )->GetText();
-		int matID = HostScene::FindMaterialID( materialName );
-		if (matID == -1) continue;
-		HostMaterial* m /* for brevity */ = HostScene::materials[matID];
+		const char* materialOrigin = entry->FirstChildElement( "origin" )->GetText();
+		m->name = string( materialName ? materialName : "" );
+		m->origin = string( materialOrigin ? materialOrigin : "" );
+		if (entry->FirstChildElement( "id" )) entry->FirstChildElement( "id" )->QueryIntText( &m->ID );
 		if (entry->FirstChildElement( "flags" )) entry->FirstChildElement( "flags" )->QueryUnsignedText( &m->flags );
 		XMLElement* color = entry->FirstChildElement( "color" );
 		if (color)
-			color->QueryFloatAttribute( "r", &m->color.value.x ),
-			color->QueryFloatAttribute( "g", &m->color.value.y ),
-			color->QueryFloatAttribute( "b", &m->color.value.z );
+			color->QueryFloatAttribute( "r", &m->color.x ),
+			color->QueryFloatAttribute( "g", &m->color.y ),
+			color->QueryFloatAttribute( "b", &m->color.z );
 		XMLElement* absorption = entry->FirstChildElement( "absorption" );
 		if (absorption)
-			absorption->QueryFloatAttribute( "r", &m->absorption.value.x ),
-			absorption->QueryFloatAttribute( "g", &m->absorption.value.y ),
-			absorption->QueryFloatAttribute( "b", &m->absorption.value.z );
-		if (entry->FirstChildElement( "metallic" )) entry->FirstChildElement( "metallic" )->QueryFloatText( &m->metallic() );
-		if (entry->FirstChildElement( "subsurface" )) entry->FirstChildElement( "subsurface" )->QueryFloatText( &m->subsurface() );
-		if (entry->FirstChildElement( "specular" )) entry->FirstChildElement( "specular" )->QueryFloatText( &m->specular() );
-		if (entry->FirstChildElement( "roughness" )) entry->FirstChildElement( "roughness" )->QueryFloatText( &m->roughness() );
-		if (entry->FirstChildElement( "specularTint" )) entry->FirstChildElement( "specularTint" )->QueryFloatText( &m->specularTint() );
-		if (entry->FirstChildElement( "anisotropic" )) entry->FirstChildElement( "anisotropic" )->QueryFloatText( &m->anisotropic() );
-		if (entry->FirstChildElement( "sheen" )) entry->FirstChildElement( "sheen" )->QueryFloatText( &m->sheen() );
-		if (entry->FirstChildElement( "sheenTint" )) entry->FirstChildElement( "sheenTint" )->QueryFloatText( &m->sheenTint() );
-		if (entry->FirstChildElement( "clearcoat" )) entry->FirstChildElement( "clearcoat" )->QueryFloatText( &m->clearcoat() );
-		if (entry->FirstChildElement( "clearcoatGloss" )) entry->FirstChildElement( "clearcoatGloss" )->QueryFloatText( &m->clearcoatGloss() );
-		if (entry->FirstChildElement( "transmission" )) entry->FirstChildElement( "transmission" )->QueryFloatText( &m->transmission() );
-		if (entry->FirstChildElement( "eta" )) entry->FirstChildElement( "eta" )->QueryFloatText( &m->eta() );
+			absorption->QueryFloatAttribute( "r", &m->absorption.x ),
+			absorption->QueryFloatAttribute( "g", &m->absorption.y ),
+			absorption->QueryFloatAttribute( "b", &m->absorption.z );
+		if (entry->FirstChildElement( "metallic" )) entry->FirstChildElement( "metallic" )->QueryFloatText( &m->metallic );
+		if (entry->FirstChildElement( "subsurface" )) entry->FirstChildElement( "subsurface" )->QueryFloatText( &m->subsurface );
+		if (entry->FirstChildElement( "specular" )) entry->FirstChildElement( "specular" )->QueryFloatText( &m->specular );
+		if (entry->FirstChildElement( "roughness" )) entry->FirstChildElement( "roughness" )->QueryFloatText( &m->roughness );
+		if (entry->FirstChildElement( "specularTint" )) entry->FirstChildElement( "specularTint" )->QueryFloatText( &m->specularTint );
+		if (entry->FirstChildElement( "anisotropic" )) entry->FirstChildElement( "anisotropic" )->QueryFloatText( &m->anisotropic );
+		if (entry->FirstChildElement( "sheen" )) entry->FirstChildElement( "sheen" )->QueryFloatText( &m->sheen );
+		if (entry->FirstChildElement( "sheenTint" )) entry->FirstChildElement( "sheenTint" )->QueryFloatText( &m->sheenTint );
+		if (entry->FirstChildElement( "clearcoat" )) entry->FirstChildElement( "clearcoat" )->QueryFloatText( &m->clearcoat );
+		if (entry->FirstChildElement( "clearcoatGloss" )) entry->FirstChildElement( "clearcoatGloss" )->QueryFloatText( &m->clearcoatGloss );
+		if (entry->FirstChildElement( "transmission" )) entry->FirstChildElement( "transmission" )->QueryFloatText( &m->transmission );
+		if (entry->FirstChildElement( "eta" )) entry->FirstChildElement( "eta" )->QueryFloatText( &m->eta );
+		if (entry->FirstChildElement( "custom0" )) entry->FirstChildElement( "custom0" )->QueryFloatText( &m->custom0 );
+		if (entry->FirstChildElement( "custom1" )) entry->FirstChildElement( "custom1" )->QueryFloatText( &m->custom1 );
+		if (entry->FirstChildElement( "custom2" )) entry->FirstChildElement( "custom2" )->QueryFloatText( &m->custom2 );
+		if (entry->FirstChildElement( "custom3" )) entry->FirstChildElement( "custom3" )->QueryFloatText( &m->custom3 );
 	}
 }
 
@@ -150,39 +175,11 @@ void HostScene::DeserializeMaterials( const char* xmlFile )
 //  +-----------------------------------------------------------------------------+
 void HostScene::Init()
 {
+	// initialize skydome
+	sky = new HostSkyDome();
+	sky->Load();
 	// initialize the camera
 	camera = new Camera();
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::SetSkyDome                                                      |
-//  |  Set the skydome used for this scene.                                 LH2'19|
-//  +-----------------------------------------------------------------------------+
-void HostScene::SetSkyDome( HostSkyDome* skydome )
-{
-	sky = skydome;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::AddMesh                                                         |
-//  |  Add an existing HostMesh to the list of meshes and return the mesh ID.     |
-//  |                                                                       LH2'19|
-//  +-----------------------------------------------------------------------------+
-int HostScene::AddMesh( HostMesh* mesh )
-{
-	// see if the mesh is already in the scene
-	for( int s = (int)meshPool.size(), i = 0; i < s; i++ )
-	{
-		if (meshPool[i] == mesh)
-		{
-			assert( mesh->ID == i );
-			return i;
-		}
-	}
-	// add the mesh
-	mesh->ID = (int)meshPool.size();
-	meshPool.push_back( mesh );
-	return mesh->ID;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -190,20 +187,12 @@ int HostScene::AddMesh( HostMesh* mesh )
 //  |  Create a mesh specified by a file name and data dir, apply a scale, add    |
 //  |  the mesh to the list of meshes and return the mesh ID.               LH2'19|
 //  +-----------------------------------------------------------------------------+
-int HostScene::AddMesh( const char* objFile, const float scale, const bool flatShaded )
-{
-	// extract directory from specified file name
-	char* tmp = new char[strlen( objFile ) + 1];
-	memcpy( tmp, objFile, strlen( objFile ) + 1 );
-	char* lastSlash = tmp, * pos = tmp;
-	while (*pos) { if (*pos == '/' || *pos == '\\') lastSlash = pos; pos++; }
-	*lastSlash = 0;
-	return AddMesh( lastSlash + 1, tmp, scale, flatShaded );
-}
 int HostScene::AddMesh( const char* objFile, const char* dir, const float scale, const bool flatShaded )
 {
 	HostMesh* newMesh = new HostMesh( objFile, dir, scale, flatShaded );
-	return AddMesh( newMesh );
+	newMesh->ID = (int)meshPool.size();
+	meshPool.push_back( newMesh );
+	return newMesh->ID;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -215,7 +204,9 @@ int HostScene::AddMesh( const char* objFile, const char* dir, const float scale,
 int HostScene::AddMesh( const int triCount )
 {
 	HostMesh* newMesh = new HostMesh( triCount );
-	return AddMesh( newMesh );
+	newMesh->ID = (int)meshPool.size();
+	meshPool.push_back( newMesh );
+	return newMesh->ID;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -244,39 +235,19 @@ void HostScene::AddTriToMesh( const int meshId, const float3& v0, const float3& 
 //  |  Loads a collection of meshes from a gltf file. An instance and a scene     |
 //  |  graph node is created for each mesh.                                 LH2'19|
 //  +-----------------------------------------------------------------------------+
-int HostScene::AddScene( const char* sceneFile, const mat4& transform )
-{
-	// extract directory from specified file name
-	char* tmp = new char[strlen( sceneFile ) + 1];
-	memcpy( tmp, sceneFile, strlen( sceneFile ) + 1 );
-	char* lastSlash = tmp, * pos = tmp;
-	while (*pos) { if (*pos == '/' || *pos == '\\') lastSlash = pos; pos++; }
-	*lastSlash = 0;
-	int retVal = 0;
-	if (strstr( lastSlash + 1, ".pbrt" ))
-	{
-		// load a .pbrt scene
-		PBRTInit();
-		ParsePBRTScene( sceneFile );
-	}
-	else
-	{
-		// not a .pbrt file; must be a .gltf file
-		retVal = AddScene( lastSlash + 1, tmp, transform );
-	}
-	delete tmp;
-	return retVal;
-}
 int HostScene::AddScene( const char* sceneFile, const char* dir, const mat4& transform )
 {
 	// offsets: if we loaded an object before this one, indices should not start at 0.
 	// based on https://github.com/SaschaWillems/Vulkan-glTF-PBR/blob/master/base/VulkanglTFModel.hpp
+	const int materialBase = (int)materials.size();
+	const int textureBase = (int)textures.size();
 	const int meshBase = (int)meshPool.size();
 	const int skinBase = (int)skins.size();
-	const int retVal = (int)nodePool.size();
-	const int nodeBase = (int)nodePool.size() + 1;
+	bool hasTransform = (transform != mat4::Identity());
+	const int nodeBase = (int)nodePool.size() + (hasTransform ? 1 : 0);
+	const int retVal = nodeBase;
 	// load gltf file
-	string cleanFileName = string( dir ) + (dir[strlen( dir ) - 1] == '/' ? "" : "/") + string( sceneFile );
+	string cleanFileName = string( dir ) + (dir[strlen( dir ) - 1] == '/' ? "" : "/" ) + string( sceneFile );
 	tinygltf::Model gltfModel;
 	tinygltf::TinyGLTF loader;
 	string err, warn;
@@ -287,88 +258,62 @@ int HostScene::AddScene( const char* sceneFile, const char* dir, const mat4& tra
 		string extension3 = cleanFileName.substr( cleanFileName.size() - 4, 4 );
 		if (extension4.compare( ".gltf" ) == 0)
 			ret = loader.LoadASCIIFromFile( &gltfModel, &err, &warn, cleanFileName.c_str() );
-		else if (extension3.compare( ".bin" ) == 0 || extension3.compare( ".glb" ) == 0)
+		if (extension3.compare( ".bin" ) == 0 || extension3.compare( ".glb" ) == 0)
 			ret = loader.LoadBinaryFromFile( &gltfModel, &err, &warn, cleanFileName.c_str() );
 	}
 	if (!warn.empty()) printf( "Warn: %s\n", warn.c_str() );
 	if (!err.empty()) printf( "Err: %s\n", err.c_str() );
 	FATALERROR_IF( !ret, "could not load glTF file:\n%s", cleanFileName.c_str() );
 	// convert textures
-	vector<int> texIdx;
 	for (size_t s = gltfModel.textures.size(), i = 0; i < s; i++)
 	{
-		char t[1024];
-		sprintf_s( t, "%s-%s-%03i", dir, sceneFile, (int)i );
-		int textureID = FindTextureID( t );
-		if (textureID != -1)
-		{
-			// push id of existing texture
-			texIdx.push_back( textureID );
-		}
-		else
-		{
-			// create new texture
-			tinygltf::Texture& gltfTexture = gltfModel.textures[i];
-			HostTexture* texture = new HostTexture();
-			const tinygltf::Image& image = gltfModel.images[gltfTexture.source];
-			const size_t size = image.component * image.width * image.height;
-			texture->name = t;
-			texture->width = image.width;
-			texture->height = image.height;
-			texture->idata = (uchar4*)MALLOC64( texture->PixelsNeeded( image.width, image.height, MIPLEVELCOUNT ) * sizeof( uint ) );
-			texture->ID = (uint)textures.size();
-			texture->flags |= HostTexture::LDR;
-			memcpy( texture->idata, image.image.data(), size );
-			texture->ConstructMIPmaps();
-			textures.push_back( texture );
-			texIdx.push_back( texture->ID );
-		}
+		tinygltf::Texture& gltfTexture = gltfModel.textures[i];
+		HostTexture* texture = new HostTexture();
+		const tinygltf::Image& image = gltfModel.images[gltfTexture.source];
+		const size_t size = image.component * image.width * image.height;
+		texture->width = image.width;
+		texture->height = image.height;
+		texture->idata = (uchar4*)MALLOC64( texture->PixelsNeeded( image.width, image.height, MIPLEVELCOUNT ) * sizeof( uint ) );
+		texture->ID = (int)i + textureBase;
+		texture->flags |= HostTexture::LDR;
+		memcpy( texture->idata, image.image.data(), size );
+		texture->ConstructMIPmaps();
+		textures.push_back( texture );
 	}
 	// convert materials
-	vector<int> matIdx;
 	for (size_t s = gltfModel.materials.size(), i = 0; i < s; i++)
 	{
-		char t[1024];
-		sprintf_s( t, "%s-%s-%03i", dir, sceneFile, (int)i );
-		int matID = FindMaterialIDByOrigin( t );
-		if (matID != -1)
-		{
-			// material already exists; reuse
-			matIdx.push_back( matID );
-		}
-		else
-		{
-			// create new material
-			tinygltf::Material& gltfMaterial = gltfModel.materials[i];
-			HostMaterial* material = new HostMaterial();
-			material->ID = (int)materials.size();
-			material->origin = t;
-			material->ConvertFrom( gltfMaterial, gltfModel, texIdx );
-			material->flags |= HostMaterial::FROM_MTL;
-			materials.push_back( material );
-			matIdx.push_back( material->ID );
-			// materialList.push_back( material->ID ); // can't do that, need something smarter.
-		}
+		tinygltf::Material& gltfMaterial = gltfModel.materials[i];
+		HostMaterial* material = new HostMaterial();
+		material->ID = (int)i + materialBase;
+		material->origin = cleanFileName;
+		material->ConvertFrom( gltfMaterial, gltfModel, textureBase );
+		material->flags |= HostMaterial::FROM_MTL;
+		materials.push_back( material );
+		// materialList.push_back( material->ID ); // can't do that, need something smarter.
 	}
 	// convert meshes
 	for (size_t s = gltfModel.meshes.size(), i = 0; i < s; i++)
 	{
 		tinygltf::Mesh& gltfMesh = gltfModel.meshes[i];
-		HostMesh* newMesh = new HostMesh( gltfMesh, gltfModel, matIdx, gltfModel.materials.size() == 0 ? 0 : -1 );
+		HostMesh* newMesh = new HostMesh( gltfMesh, gltfModel, materialBase, gltfModel.materials.size() == 0 ? 0 : -1 );
 		newMesh->ID = (int)i + meshBase;
 		meshPool.push_back( newMesh );
 	}
-	// push an extra node that holds a transform for the gltf scene
-	HostNode* newNode = new HostNode();
-	newNode->localTransform = transform;
-	newNode->ID = nodeBase - 1;
-	nodePool.push_back( newNode );
 	// convert nodes
+	if (hasTransform)
+	{
+		// push an extra node that holds a transform for the gltf scene
+		HostNode* newNode = new HostNode();
+		newNode->localTransform = transform;
+		newNode->ID = nodeBase - 1;
+		nodePool.push_back( newNode );
+	}
 	for (size_t s = gltfModel.nodes.size(), i = 0; i < s; i++)
 	{
 		tinygltf::Node& gltfNode = gltfModel.nodes[i];
 		HostNode* newNode = new HostNode( gltfNode, nodeBase, meshBase, skinBase );
-		newNode->ID = (int)nodePool.size();
+		newNode->ID = (int)i + nodeBase;
 		nodePool.push_back( newNode );
 	}
 	// convert animations and skins
@@ -377,17 +322,25 @@ int HostScene::AddScene( const char* sceneFile, const char* dir, const mat4& tra
 		HostAnimation* anim = new HostAnimation( gltfAnim, gltfModel, nodeBase );
 		animations.push_back( anim );
 	}
-	for (tinygltf::Skin& source : gltfModel.skins)
+	for (tinygltf::Skin &source : gltfModel.skins)
 	{
 		HostSkin* newSkin = new HostSkin( source, gltfModel, nodeBase );
 		skins.push_back( newSkin );
 	}
 	// construct a scene graph for scene 0, assuming the GLTF file has one scene
 	tinygltf::Scene& glftScene = gltfModel.scenes[0];
-	// add the root nodes to the scene transform node
-	for (size_t i = 0; i < glftScene.nodes.size(); i++) nodePool[nodeBase - 1]->childIdx.push_back( glftScene.nodes[i] + nodeBase );
-	// add the root transform to the scene
-	rootNodes.push_back( nodeBase - 1 );
+	if (hasTransform)
+	{
+		// add the root nodes to the scene transform node
+		for (size_t i = 0; i < glftScene.nodes.size(); i++) nodePool[nodeBase - 1]->childIdx.push_back( glftScene.nodes[i] + nodeBase );
+		// add the root transform to the scene
+		rootNodes.push_back( nodeBase - 1 );
+	}
+	else
+	{
+		// add the root nodes to the scene
+		for (size_t i = 0; i < glftScene.nodes.size(); i++) rootNodes.push_back( glftScene.nodes[i] + nodeBase );
+	}
 	// return index of first created node
 	return retVal;
 }
@@ -403,7 +356,7 @@ int HostScene::AddQuad( float3 N, const float3 pos, const float width, const flo
 	HostMesh* newMesh = meshID > -1 ? meshPool[meshID] : new HostMesh();
 	N = normalize( N ); // let's not assume the normal is normalized.
 #if 1
-	const float3 tmp = fabs( N.x ) > 0.9f ? make_float3( 0, 1, 0 ) : make_float3( 1, 0, 0 );
+	const float3 tmp = N.x > 0.9f ? make_float3( 0, 1, 0 ) : make_float3( 1, 0, 0 );
 	const float3 T = 0.5f * width * normalize( cross( N, tmp ) );
 	const float3 B = 0.5f * height * normalize( cross( normalize( T ), N ) );
 #else
@@ -435,8 +388,6 @@ int HostScene::AddQuad( float3 N, const float3 pos, const float width, const flo
 	tri2.vertex0 = make_float3( newMesh->vertices[vertBase + 3] );
 	tri2.vertex1 = make_float3( newMesh->vertices[vertBase + 4] );
 	tri2.vertex2 = make_float3( newMesh->vertices[vertBase + 5] );
-	tri1.T = tri2.T = T / (0.5 * height);
-	tri1.B = tri2.B = B / (0.5 * width);
 	newMesh->triangles.push_back( tri1 );
 	newMesh->triangles.push_back( tri2 );
 	// if the mesh was newly created, add it to scene mesh list
@@ -453,8 +404,9 @@ int HostScene::AddQuad( float3 N, const float3 pos, const float width, const flo
 //  |  HostScene::AddInstance                                                     |
 //  |  Add an instance of an existing mesh to the scene.                    LH2'19|
 //  +-----------------------------------------------------------------------------+
-int HostScene::AddInstance( HostNode* newNode )
+int HostScene::AddInstance( const int meshId, const mat4& transform )
 {
+	HostNode* newNode = new HostNode( meshId, transform );
 	if (nodeListHoles > 0)
 	{
 		// we have holes in the nodes vector due to instance deletions; search from the
@@ -476,16 +428,6 @@ int HostScene::AddInstance( HostNode* newNode )
 	nodePool.push_back( newNode );
 	rootNodes.push_back( newNode->ID );
 	return newNode->ID;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::AddInstance                                                     |
-//  |  Add an instance of an existing mesh to the scene.                    LH2'19|
-//  +-----------------------------------------------------------------------------+
-int HostScene::AddInstance( const int meshId, const mat4& transform )
-{
-	HostNode* newNode = new HostNode( meshId, transform );
-	return AddInstance( newNode );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -511,16 +453,6 @@ void HostScene::RemoveNode( const int nodeId )
 	nodePool[nodeId] = 0; // safe; we only access the nodes vector indirectly.
 	delete node;
 	nodeListHoles++; // HostScene::AddInstance will fill up holes first.
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::FindTextureID                                                   |
-//  |  Return a texture ID if it already exists.                            LH2'20|
-//  +-----------------------------------------------------------------------------+
-int HostScene::FindTextureID( const char* name )
-{
-	for (auto texture : textures) if (strcmp( texture->name.c_str(), name ) == 0) return texture->ID;
-	return -1;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -562,67 +494,12 @@ int HostScene::FindOrCreateMaterial( const string& name )
 }
 
 //  +-----------------------------------------------------------------------------+
-//  |  HostScene::FindOrCreateMaterialCopy                                        |
-//  |  Create an untextured material, based on an existing material. This copy is |
-//  |  to be used for a triangle that only reads a single texel from a texture;   |
-//  |  using a single color is more efficient.                              LH2'20|
-//  +-----------------------------------------------------------------------------+
-int HostScene::FindOrCreateMaterialCopy( const int matID, const uint color )
-{
-	// search list for existing material copy
-	const int r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
-	const float3 c = make_float3( b * (1.0f / 255.0f), g * (1.0f / 255.0f), r * (1.0f / 255.0f) );
-	for (auto material : materials)
-	{
-		if (material->flags & HostMaterial::SINGLE_COLOR_COPY &&
-			material->color.value.x == c.x && material->color.value.y == c.y && material->color.value.z == c.z)
-		{
-			material->refCount++;
-			return material->ID;
-		}
-	}
-	// nothing found, create a new material copy
-	const int newID = AddMaterial( make_float3( 0 ) );
-	*materials[newID] = *materials[matID];
-	materials[newID]->color.textureID = -1;
-	materials[newID]->color.value = c;
-	materials[newID]->flags |= HostMaterial::SINGLE_COLOR_COPY;
-	materials[newID]->ID = newID;
-	char t[256];
-	sprintf( t, "copied_mat_%i", newID );
-	materials[newID]->name = t;
-	return newID;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::FindMaterialID                                                  |
+//  |  HostScene::GetTriangleMaterial                                             |
 //  |  Find the ID of a material with the specified name.                   LH2'19|
 //  +-----------------------------------------------------------------------------+
 int HostScene::FindMaterialID( const char* name )
 {
 	for (auto material : materials) if (material->name.compare( name ) == 0) return material->ID;
-	return -1;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::FindMaterialIDByOrigin                                          |
-//  |  Find the ID of a material with the specified origin.                 LH2'20|
-//  +-----------------------------------------------------------------------------+
-int HostScene::FindMaterialIDByOrigin( const char* name )
-{
-	for (auto material : materials) if (material->origin.compare( name ) == 0) return material->ID;
-	return -1;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::FindNextMaterialID                                              |
-//  |  Find the ID of a material with the specified name, with an ID greater than |
-//  |  the specified one. Used to find materials with the same name.        LH2'20|
-//  +-----------------------------------------------------------------------------+
-int HostScene::FindNextMaterialID( const char* name, const int matID )
-{
-	for (int s = (int)materials.size(), i = matID + 1; i < s; i++)
-		if (materials[i]->name.compare( name ) == 0) return materials[i]->ID;
 	return -1;
 }
 
@@ -644,17 +521,6 @@ void HostScene::SetNodeTransform( const int nodeId, const mat4& transform )
 {
 	if (nodeId < 0 || nodeId >= nodePool.size()) return;
 	nodePool[nodeId]->localTransform = transform;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::GetNodeTransform                                                |
-//  |  Set the local transform for the specified node.                      LH2'19|
-//  +-----------------------------------------------------------------------------+
-const mat4& HostScene::GetNodeTransform( const int nodeId )
-{
-	static mat4 dummyIdentity;
-	if (nodeId < 0 || nodeId >= nodePool.size()) return dummyIdentity;
-	return nodePool[nodeId]->localTransform;
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -687,33 +553,20 @@ int HostScene::CreateTexture( const string& origin, const uint modFlags )
 	// create a new texture
 	HostTexture* newTexture = new HostTexture( origin.c_str(), modFlags );
 	textures.push_back( newTexture );
-	return newTexture->ID = (int)textures.size() - 1;
-}
-
-//  +-----------------------------------------------------------------------------+
-//  |  HostScene::AddMaterial                                                     |
-//  |  Adds an existing HostMaterial* and returns the ID. If the material         |
-//  |  with that pointer is already added, it is not added again.           LH2'19|
-//  +-----------------------------------------------------------------------------+
-int HostScene::AddMaterial( HostMaterial* material )
-{
-	auto res = std::find( materials.begin(), materials.end(), material );
-	if (res != materials.end()) return std::distance( materials.begin(), res );
-	int matid = (int)materials.size();
-	materials.push_back( material );
-	return matid;
+	return (int)textures.size() - 1;
 }
 
 //  +-----------------------------------------------------------------------------+
 //  |  HostScene::AddMaterial                                                     |
 //  |  Create a material, with a limited set of parameters.                 LH2'19|
 //  +-----------------------------------------------------------------------------+
-int HostScene::AddMaterial( const float3 color, const char* name )
+int HostScene::AddMaterial( const float3 color )
 {
 	HostMaterial* material = new HostMaterial();
 	material->color = color;
-	if (name) material->name = name;
-	return material->ID = AddMaterial( material );
+	material->ID = (int)materials.size();
+	materials.push_back( material );
+	return material->ID;
 }
 
 //  +-----------------------------------------------------------------------------+

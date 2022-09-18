@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property and proprietary
  * rights in and to this software, related documentation and any modifications thereto.
@@ -43,41 +43,22 @@
 extern "C" {
 #endif
 
-/// \defgroup optix_host_api Host API
-/// \brief OptiX Host API
-
-/// \defgroup optix_host_api_error_handling Error handling
-/// \ingroup optix_host_api
-//@{
+/// \name Error handling
+//@ {
 
 /// Returns a string containing the name of an error code in the enum.
 ///
-/// Output is a string representation of the enum.  For example "OPTIX_SUCCESS" for
-/// OPTIX_SUCCESS and "OPTIX_ERROR_INVALID_VALUE" for OPTIX_ERROR_INVALID_VALUE.
-///
 /// If the error code is not recognized, "Unrecognized OptixResult code" is returned.
-///
-/// \param[in] result  OptixResult enum to generate string name for
-///
-/// \see #optixGetErrorString
 const char* optixGetErrorName( OptixResult result );
 
 /// Returns the description string for an error code.
 ///
-/// Output is a string description of the enum.  For example "Success" for
-/// OPTIX_SUCCESS and "Invalid value" for OPTIX_ERROR_INVALID_VALUE.
-///
 /// If the error code is not recognized, "Unrecognized OptixResult code" is returned.
-///
-/// \param[in] result  OptixResult enum to generate string description for
-///
-/// \see #optixGetErrorName
 const char* optixGetErrorString( OptixResult result );
 
-//@}
-/// \defgroup optix_host_api_device_context Device context
-/// \ingroup optix_host_api
-//@{
+//@ }
+/// \name Device contexts
+//@ {
 
 /// Create a device context associated with the CUDA context specified with 'fromContext'.
 ///
@@ -119,7 +100,7 @@ OptixResult optixDeviceContextGetProperty( OptixDeviceContext context, OptixDevi
 
 /// Sets the current log callback method.
 ///
-/// See #OptixLogCallback for more details.
+/// See OptixLogCallback for more details.
 ///
 /// Thread safety: It is guaranteed that the callback itself (callbackFunction and callbackData) are updated atomically.
 /// It is not guaranteed that the callback itself (callbackFunction and callbackData) and the callbackLevel are updated
@@ -143,13 +124,6 @@ OptixResult optixDeviceContextSetLogCallback( OptixDeviceContext context,
 ///
 /// Note that no in-memory cache is used, so no caching behavior will be observed if the disk cache
 /// is disabled.
-///
-/// The cache can be disabled by setting the environment variable OPTIX_CACHE_MAXSIZE=0.
-/// The environment variable takes precedence over this setting.
-/// See #optixDeviceContextSetCacheDatabaseSizes for additional information.
-///
-/// Note that the disk cache can be disabled by the environment variable, but it cannot be enabled
-/// via the environment if it is disabled via the API.
 ///
 /// \param[in] context the device context
 /// \param[in] enabled 1 to enabled, 0 to disable
@@ -196,12 +170,6 @@ OptixResult optixDeviceContextSetCacheLocation( OptixDeviceContext context, cons
 /// mark and garbage collection is enabled, the module will not be added to the cache
 /// and a warning will be added to the log.
 ///
-/// The high water mark can be overridden with the environment variable OPTIX_CACHE_MAXSIZE.
-/// The environment variable takes precedence over the function parameters.  The low water mark
-/// will be set to half the value of OPTIX_CACHE_MAXSIZE.  Setting OPTIX_CACHE_MAXSIZE to 0 will
-/// disable the disk cache, but will not alter the contents of the cache.  Negative and non-integer
-/// values will be ignored.
-///
 /// \param[in] context       the device context
 /// \param[in] lowWaterMark  the low water mark
 /// \param[in] highWaterMark the high water mark
@@ -212,27 +180,23 @@ OptixResult optixDeviceContextSetCacheDatabaseSizes( OptixDeviceContext context,
 /// \param[in] context   the device context
 /// \param[out] enabled  1 if enabled, 0 if disabled
 OptixResult optixDeviceContextGetCacheEnabled( OptixDeviceContext context, int* enabled );
-/// Returns the location of the disk cache.  If the cache has been disabled by setting the environment
-/// variable OPTIX_CACHE_MAXSIZE=0, this function will return an empy string.
+/// Returns the location of the disk cache.
 ///
 /// \param[in] context      the device context
 /// \param[out] location    directory of disk cache, null terminated if locationSize > 0
 /// \param[in] locationSize locationSize
 OptixResult optixDeviceContextGetCacheLocation( OptixDeviceContext context, char* location, size_t locationSize );
 
-/// Returns the low and high water marks for disk cache garbage collection.  If the cache has been disabled by
-/// setting the environment variable OPTIX_CACHE_MAXSIZE=0, this function will return 0 for the low and high
-/// water marks.
+/// Returns the low and high water marks for disk cache garbage collection.
 ///
 /// \param[in] context        the device context
 /// \param[out] lowWaterMark  the low water mark
 /// \param[out] highWaterMark the high water mark
 OptixResult optixDeviceContextGetCacheDatabaseSizes( OptixDeviceContext context, size_t* lowWaterMark, size_t* highWaterMark );
 
-//@}
-/// \defgroup optix_host_api_pipelines Pipelines
-/// \ingroup optix_host_api
-//@{
+//@ }
+/// \name Pipelines
+//@ {
 
 /// logString is an optional buffer that contains compiler feedback and errors.  This
 /// information is also passed to the context logger (if enabled), however it may be
@@ -283,7 +247,7 @@ OptixResult optixPipelineDestroy( OptixPipeline pipeline );
 /// traversal graph, the maxTraversableGraphDepth is two.
 /// For IAS -> MT (motion transform) -> GAS, the maxTraversableGraphDepth is three.
 /// Note that it does not matter whether a IAS or GAS has motion or not, it always counts as one.
-/// Launching optix with exceptions turned on (see #OPTIX_EXCEPTION_FLAG_TRACE_DEPTH) will throw an exception
+/// Launching optix with exceptions turned on (see OPTIX_EXCEPTION_FLAG_TRACE_DEPTH) will throw an exception
 /// if the specified maxTraversableGraphDepth is too small.
 ///
 /// \param[in] pipeline                             The pipeline to configure the stack size for.
@@ -297,10 +261,9 @@ OptixResult optixPipelineSetStackSize( OptixPipeline pipeline,
                                        unsigned int  continuationStackSize,
                                        unsigned int  maxTraversableGraphDepth );
 
-//@}
-/// \defgroup optix_host_api_modules Modules
-/// \ingroup optix_host_api
-//@{
+//@ }
+/// \name Modules
+//@ {
 
 /// logString is an optional buffer that contains compiler feedback and errors.  This
 /// information is also passed to the context logger (if enabled), however it may be
@@ -320,8 +283,8 @@ OptixResult optixPipelineSetStackSize( OptixPipeline pipeline,
 /// \param[in] context
 /// \param[in] moduleCompileOptions
 /// \param[in] pipelineCompileOptions All modules in a pipeline need to use the same values for the pipeline compile options.
-/// \param[in] PTX                    Pointer to the PTX input string.
-/// \param[in] PTXsize                Parsing proceeds up to PTXsize characters, or the first NUL byte, whichever occurs first.
+/// \param[in] PTX
+/// \param[in] PTXsize
 /// \param[out] logString             Information will be written to this string. If logStringSize > 0 logString will be null terminated.
 /// \param[in,out] logStringSize
 /// \param[out] module
@@ -336,64 +299,6 @@ OptixResult optixModuleCreateFromPTX( OptixDeviceContext                 context
                                       size_t*                            logStringSize,
                                       OptixModule*                       module );
 
-/// This function is designed to do just enough work to create the OptixTask return
-/// parameter and is expected to be fast enough run without needing parallel execution. A
-/// single thread could generate all the OptixTask objects for further processing in a
-/// work pool.
-///
-/// Options are similar to #optixModuleCreateFromPTX(), aside from the return parameter,
-/// firstTask.
-///
-/// The memory used to hold the PTX should be live until all tasks are finished.
-///
-/// It is illegal to call #optixModuleDestroy() if any OptixTask objects are currently
-/// being executed. In that case OPTIX_ERROR_ILLEGAL_DURING_TASK_EXECUTE will be returned.
-///
-/// If an invocation of optixTaskExecute fails, the OptixModule will be marked as
-/// OPTIX_MODULE_COMPILE_STATE_IMPENDING_FAILURE if there are outstanding tasks or
-/// OPTIX_MODULE_COMPILE_STATE_FAILURE if there are no outstanding tasks. Subsequent calls
-/// to #optixTaskExecute() may execute additional work to collect compilation errors
-/// generated from the input. Currently executing tasks will not necessarily be terminated
-/// immediately but at the next opportunity.
-
-/// Logging will continue to be directed to the logger installed with the
-/// OptixDeviceContext. If logString is provided to #optixModuleCreateFromPTXWithTasks(),
-/// it will contain all the compiler feedback from all executed tasks. The lifetime of the
-/// memory pointed to by logString should extend from calling
-/// #optixModuleCreateFromPTXWithTasks() to when the compilation state is either
-/// OPTIX_MODULE_COMPILE_STATE_FAILURE or OPTIX_MODULE_COMPILE_STATE_COMPLETED. OptiX will
-/// not write to the logString outside of execution of
-/// #optixModuleCreateFromPTXWithTasks() or #optixTaskExecute(). If the compilation state
-/// is OPTIX_MODULE_COMPILE_STATE_IMPENDING_FAILURE and no further execution of
-/// #optixTaskExecute() is performed the logString may be reclaimed by the application
-/// before calling #optixModuleDestroy(). The contents of logString will contain output
-/// from currently completed tasks.
-
-/// All OptixTask objects associated with a given OptixModule will be cleaned up when
-/// #optixModuleDestroy() is called regardless of whether the compilation was successful
-/// or not. If the compilation state is OPTIX_MODULE_COMPILE_STATE_IMPENDIND_FAILURE, any
-/// unstarted OptixTask objects do not need to be executed though there is no harm doing
-/// so.
-///
-/// \see #optixModuleCreateFromPTX
-OptixResult optixModuleCreateFromPTXWithTasks( OptixDeviceContext                 context,
-                                               const OptixModuleCompileOptions*   moduleCompileOptions,
-                                               const OptixPipelineCompileOptions* pipelineCompileOptions,
-                                               const char*                        PTX,
-                                               size_t                             PTXsize,
-                                               char*                              logString,
-                                               size_t*                            logStringSize,
-                                               OptixModule*                       module,
-                                               OptixTask*                         firstTask );
-
-/// When creating a module with tasks, the current state of the module can be queried
-/// using this function.
-///
-/// Thread safety: Safe to call from any thread until optixModuleDestroy is called.
-///
-/// \see #optixModuleCreateFromPTXWithTasks
-OptixResult optixModuleGetCompilationState( OptixModule module, OptixModuleCompileState* state );
-
 /// Call for OptixModule objects created with optixModuleCreateFromPTX and optixModuleDeserialize.
 ///
 /// Modules must not be destroyed while they are still used by any program group.
@@ -401,43 +306,9 @@ OptixResult optixModuleGetCompilationState( OptixModule module, OptixModuleCompi
 /// Thread safety: A module must not be destroyed while it is still in use by concurrent API calls in other threads.
 OptixResult optixModuleDestroy( OptixModule module );
 
-/// Returns a module containing the intersection program for the built-in primitive type specified
-/// by the builtinISOptions.  This module must be used as the moduleIS for the OptixProgramGroupHitgroup
-/// in any SBT record for that primitive type.  (The entryFunctionNameIS should be null.)
-OptixResult optixBuiltinISModuleGet( OptixDeviceContext                 context,
-                                     const OptixModuleCompileOptions*   moduleCompileOptions,
-                                     const OptixPipelineCompileOptions* pipelineCompileOptions,
-                                     const OptixBuiltinISOptions*       builtinISOptions,
-                                     OptixModule*                       builtinModule );
-
-//@}
-/// \defgroup optix_host_api_tasks Tasks
-/// \ingroup optix_host_api
-//@{
-
-/// Each OptixTask should be executed with #optixTaskExecute(). If additional parallel
-/// work is found, new OptixTask objects will be returned in additionalTasks along with
-/// the number of additional tasks in numAdditionalTasksCreated. The parameter
-/// additionalTasks should point to a user allocated array of minimum size
-/// maxNumAdditionalTasks. OptiX can generate upto maxNumAdditionalTasks additional tasks.
-///
-/// Each task can be executed in parallel and in any order.
-///
-/// Thread safety: Safe to call from any thread until #optixModuleDestroy() is called for
-/// any associated task.
-///
-/// \see #optixModuleCreateFromPTXWithTasks
-///
-/// \param[in] task the OptixTask to execute
-/// \param[in] additionalTasks pointer to array of OptixTask objects to be filled in
-/// \param[in] maxNumAdditionalTasks maximum number of additional OptixTask objects
-/// \param[out] numAdditionalTasksCreated number of OptixTask objects created by OptiX and written into #additionalTasks
-OptixResult optixTaskExecute( OptixTask task, OptixTask* additionalTasks, unsigned int maxNumAdditionalTasks, unsigned int* numAdditionalTasksCreated );
-
-//@}
-/// \defgroup optix_host_api_program_groups Program groups
-/// \ingroup optix_host_api
-//@{
+//@ }
+/// \name Program groups
+//@ {
 
 /// Returns the stack sizes for the given program group.
 ///
@@ -481,10 +352,9 @@ OptixResult optixProgramGroupCreate( OptixDeviceContext              context,
 /// Thread safety: A program group must not be destroyed while it is still in use by concurrent API calls in other threads.
 OptixResult optixProgramGroupDestroy( OptixProgramGroup programGroup );
 
-//@}
-/// \defgroup optix_host_api_launches Launches
-/// \ingroup optix_host_api
-//@{
+//@ }
+/// \name Launches
+//@ {
 
 /// Where the magic happens.
 ///
@@ -525,13 +395,12 @@ OptixResult optixLaunch( OptixPipeline                  pipeline,
 /// \param[out] sbtRecordHeaderHostPointer  the result sbt record header
 OptixResult optixSbtRecordPackHeader( OptixProgramGroup programGroup, void* sbtRecordHeaderHostPointer );
 
-//@}
-/// \defgroup optix_host_api_acceleration_structures Acceleration structures
-/// \ingroup optix_host_api
-//@{
+//@ }
+/// \name Acceleration structures
+//@ {
 
-/// \param[in] context
-/// \param[in] accelOptions   options for the accel build
+/// \param[in] context        device context of the pipeline
+/// \param[in] accelOptions   accel options
 /// \param[in] buildInputs    an array of OptixBuildInput objects
 /// \param[in] numBuildInputs number of elements in buildInputs (must be at least 1)
 /// \param[out] bufferSizes   fills in buffer sizes
@@ -552,6 +421,8 @@ OptixResult optixAccelComputeMemoryUsage( OptixDeviceContext            context,
 /// \param[in] outputBufferSizeInBytes
 /// \param[out] outputHandle
 /// \param[out] emittedProperties        types of requested properties and output buffers
+///                                      OPTIX_PROPERTY_TYPE_AABBS is currently not supported
+///                                      and must be requested via optixAccelEmitProperties
 /// \param[in] numEmittedProperties      number of post-build properties to populate (may be zero)
 OptixResult optixAccelBuild( OptixDeviceContext            context,
                              CUstream                      stream,
@@ -571,7 +442,7 @@ OptixResult optixAccelBuild( OptixDeviceContext            context,
 ///
 /// The relocation information can be passed to optixAccelCheckRelocationCompatibility to
 /// determine if an acceleration structure, referenced by 'handle', can be relocated to a
-/// different device's memory space (see #optixAccelCheckRelocationCompatibility).
+/// different device's memory space (see optixAccelCheckRelocationCompatibility).
 ///
 /// When used with optixAccelRelocate, it provides data necessary for doing the relocation.
 ///
@@ -665,7 +536,7 @@ OptixResult optixAccelCompact( OptixDeviceContext      context,
                                OptixTraversableHandle* outputHandle );
 
 /// \param[in] onDevice
-/// \param[in] pointer            pointer to traversable allocated in OptixDeviceContext. This pointer must be a multiple of OPTIX_TRANSFORM_BYTE_ALIGNMENT
+/// \param[in] pointer            pointer to traversalbe allocated in OptixDeviceContext. This pointer must be a multiple of OPTIX_TRANSFORM_BYTE_ALIGNMENT
 /// \param[in] traversableType    Type of OptixTraversableHandle to create
 /// \param[out] traversableHandle traversable handle. traversableHandle must be in host memory
 OptixResult optixConvertPointerToTraversableHandle( OptixDeviceContext      onDevice,
@@ -673,62 +544,32 @@ OptixResult optixConvertPointerToTraversableHandle( OptixDeviceContext      onDe
                                                     OptixTraversableType    traversableType,
                                                     OptixTraversableHandle* traversableHandle );
 
+//@ }
+/// \name Denoiser
+//@ {
 
-
-
-
-//@}
-/// \defgroup optix_host_api_denoiser Denoiser
-/// \ingroup optix_host_api
-//@{
-
-/// Creates a denoiser object with the given options, using built-in inference models
-///
-/// 'modelKind' selects the model used for inference.
-/// Inference for the built-in models can be guided (giving hints to improve image quality) with
-/// albedo and normal vector images in the guide layer (see 'optixDenoiserInvoke').
-/// Use of these images must be enabled in 'OptixDenoiserOptions'.
+/// Creates a denoiser object with the given options.
 ///
 /// \param[in] context
-/// \param[in] modelKind
 /// \param[in] options
 /// \param[out] denoiser
-OptixResult optixDenoiserCreate( OptixDeviceContext context,
-                                 OptixDenoiserModelKind modelKind,
-                                 const OptixDenoiserOptions* options,
-                                 OptixDenoiser* denoiser );
+OptixResult optixDenoiserCreate( OptixDeviceContext context, const OptixDenoiserOptions* options, OptixDenoiser* denoiser );
 
-/// Creates a denoiser object with the given options, using a provided inference model
+/// Sets the model of the denoiser.
 ///
-/// 'userData' and 'userDataSizeInBytes' provide a user model for inference.
-/// The memory passed in userData will be accessed only during the invocation of this function and
-/// can be freed after it returns.
-/// The user model must export only one weight set which determines both the model kind and the
-/// required set of guide images.
+/// If the kind is OPTIX_DENOISER_MODEL_KIND_USER, then the data and sizeInByes must not be
+/// null and zero respectively.  For other kinds, these parameters must be zero.
 ///
-/// \param[in] context
-/// \param[in] userData
-/// \param[in] userDataSizeInBytes
-/// \param[out] denoiser
-OptixResult optixDenoiserCreateWithUserModel( OptixDeviceContext context,
-                                              const void* userData, size_t userDataSizeInBytes, OptixDenoiser* denoiser );
+/// \param[in] denoiser
+/// \param[in] kind
+/// \param[in] data
+/// \param[in] sizeInBytes
+OptixResult optixDenoiserSetModel( OptixDenoiser denoiser, OptixDenoiserModelKind kind, void* data, size_t sizeInBytes );
 
 /// Destroys the denoiser object and any associated host resources.
 OptixResult optixDenoiserDestroy( OptixDenoiser denoiser );
 
 /// Computes the GPU memory resources required to execute the denoiser.
-///
-/// Memory for state and scratch buffers must be allocated with the sizes in 'returnSizes' and scratch memory
-/// passed to optixDenoiserSetup, optixDenoiserInvoke,
-/// optixDenoiserComputeIntensity and optixDenoiserComputeAverageColor.
-/// For tiled denoising an overlap area must be added to each tile on all sides which increases the amount of
-/// memory needed to denoise a tile. In case of tiling use withOverlapScratchSizeInBytes.
-/// If only full resolution images are denoised, withoutOverlapScratchSizeInBytes can be used which is always
-/// smaller than withOverlapScratchSizeInBytes.
-///
-/// 'outputWidth' and 'outputHeight' is the dimension of the image to be denoised (without overlap in case tiling
-/// is being used).
-/// 'outputWidth' and 'outputHeight' must be greater than or equal to the dimensions passed to optixDenoiserSetup.
 ///
 /// \param[in] denoiser
 /// \param[in] outputWidth
@@ -741,122 +582,52 @@ OptixResult optixDenoiserComputeMemoryResources( const OptixDenoiser denoiser,
 
 /// Initializes the state required by the denoiser.
 ///
-/// 'inputWidth' and 'inputHeight' must include overlap on both sides of the image if tiling is being used. The overlap is
-/// returned by #optixDenoiserComputeMemoryResources.
-/// For subsequent calls to #optixDenoiserInvoke 'inputWidth' and 'inputHeight' are the maximum dimensions
-/// of the input layers. Dimensions of the input layers passed to #optixDenoiserInvoke may be different in each
-/// invocation however they always must be smaller than 'inputWidth' and 'inputHeight' passed to #optixDenoiserSetup.
-///
 /// \param[in] denoiser
 /// \param[in] stream
-/// \param[in] inputWidth
-/// \param[in] inputHeight
+/// \param[in] outputWidth
+/// \param[in] outputHeight
 /// \param[in] denoiserState
 /// \param[in] denoiserStateSizeInBytes
 /// \param[in] scratch
 /// \param[in] scratchSizeInBytes
 OptixResult optixDenoiserSetup( OptixDenoiser denoiser,
                                 CUstream      stream,
-                                unsigned int  inputWidth,
-                                unsigned int  inputHeight,
+                                unsigned int  outputWidth,
+                                unsigned int  outputHeight,
                                 CUdeviceptr   denoiserState,
                                 size_t        denoiserStateSizeInBytes,
                                 CUdeviceptr   scratch,
                                 size_t        scratchSizeInBytes );
 
-/// Invokes denoiser on a set of input data and produces at least one output image.
-/// State memory must be available during the execution of the
-/// denoiser (or until optixDenoiserSetup is called with a new state memory pointer).
-/// Scratch memory passed is used only for the duration of this function.
-/// Scratch and state memory sizes must have a size greater than or equal to the sizes as returned by
-/// optixDenoiserComputeMemoryResources.
-///
-/// 'inputOffsetX' and 'inputOffsetY' are pixel offsets in the 'inputLayers' image
-/// specifying the beginning of the image without overlap. When denoising an entire image without tiling
-/// there is no overlap and 'inputOffsetX' and 'inputOffsetY' must be zero. When denoising a tile which is
-/// adjacent to one of the four sides of the entire image the corresponding offsets must also be zero since
-/// there is no overlap at the side adjacent to the image border.
-///
-/// 'guideLayer' provides additional information to the denoiser. When providing albedo and normal vector
-/// guide images, the corresponding fields in the 'OptixDenoiserOptions' must be
-/// enabled, see #optixDenoiserCreate.
-/// 'guideLayer' must not be null. If a guide image in 'OptixDenoiserOptions' is not enabled, the
-/// corresponding image in 'OptixDenoiserGuideLayer' is ignored.
-///
-/// If OPTIX_DENOISER_MODEL_KIND_TEMPORAL or OPTIX_DENOISER_MODEL_KIND_TEMPORAL_AOV  is selected, a 2d flow
-/// image must be given in 'OptixDenoiserGuideLayer'.
-/// It describes for each pixel the flow from the previous to the current frame (a 2d vector in pixel space).
-/// The denoised beauty/AOV of the previous frame must be given in 'previousOutput'.
-/// If this image is not available in the first frame of a sequence, the noisy beauty/AOV from the first frame
-/// and zero flow vectors could be given as a substitute.
-/// For non-temporal model kinds the flow image in 'OptixDenoiserGuideLayer' is ignored.
-/// 'previousOutput' and
-/// 'output' may refer to the same buffer, i.e. 'previousOutput' is first read by this function and later
-/// overwritten with the denoised result. 'output' can be passed as 'previousOutput' to the next frame.
-/// In other model kinds (not temporal) 'previousOutput' is ignored.
-///
-/// The beauty layer must be given as the first entry in 'layers'.
-/// In AOV type model kinds (OPTIX_DENOISER_MODEL_KIND_AOV or in user defined models implementing
-/// kernel-prediction) additional layers for the AOV images can be given.
-/// In each layer the noisy input image is given in 'input', the denoised output is written into the
-/// 'output' image. input and output images may refer to the same buffer, with the restriction that
-/// the pixel formats must be identical for input and output when the blend mode is selected (see
-/// #OptixDenoiserParams).
-///
-/// If OPTIX_DENOISER_MODEL_KIND_TEMPORAL or OPTIX_DENOISER_MODEL_KIND_TEMPORAL_AOV  is selected, the denoised
-/// image from the previous frame must be given in 'previousOutput' in the layer. 'previousOutput' and
-/// 'output' may refer to the same buffer, i.e. 'previousOutput' is first read by this function and later
-/// overwritten with the denoised result. 'output' can be passed as 'previousOutput' to the next frame.
-/// In other model kinds (not temporal) 'previousOutput' is ignored.
-///
-/// If OPTIX_DENOISER_MODEL_KIND_TEMPORAL or OPTIX_DENOISER_MODEL_KIND_TEMPORAL_AOV  is selected, the
-/// normal vector guide image must be given as 3d vectors in camera space. In the other models only
-/// the x and y channels are used and other channels are ignored.
+/// Invokes denoiser on a set of input data and produces one output
+/// image. Scratch memory must be available during the execution of the
+/// denoiser.
 ///
 /// \param[in] denoiser
 /// \param[in] stream
 /// \param[in] params
 /// \param[in] denoiserState
 /// \param[in] denoiserStateSizeInBytes
-/// \param[in] guideLayer
-/// \param[in] layers
-/// \param[in] numLayers
+/// \param[in] inputLayers
+/// \param[in] numInputLayers
 /// \param[in] inputOffsetX
 /// \param[in] inputOffsetY
+/// \param[in] outputLayer
 /// \param[in] scratch
 /// \param[in] scratchSizeInBytes
-OptixResult optixDenoiserInvoke( OptixDenoiser                   denoiser,
-                                 CUstream                        stream,
-                                 const OptixDenoiserParams*      params,
-                                 CUdeviceptr                     denoiserState,
-                                 size_t                          denoiserStateSizeInBytes,
-                                 const OptixDenoiserGuideLayer*  guideLayer,
-                                 const OptixDenoiserLayer*       layers,
-                                 unsigned int                    numLayers,
-                                 unsigned int                    inputOffsetX,
-                                 unsigned int                    inputOffsetY,
-                                 CUdeviceptr                     scratch,
-                                 size_t                          scratchSizeInBytes );
+OptixResult optixDenoiserInvoke( OptixDenoiser              denoiser,
+                                 CUstream                   stream,
+                                 const OptixDenoiserParams* params,
+                                 CUdeviceptr                denoiserState,
+                                 size_t                     denoiserStateSizeInBytes,
+                                 const OptixImage2D*        inputLayers,
+                                 unsigned int               numInputLayers,
+                                 unsigned int               inputOffsetX,
+                                 unsigned int               inputOffsetY,
+                                 const OptixImage2D*        outputLayer,
+                                 CUdeviceptr                scratch,
+                                 size_t                     scratchSizeInBytes );
 
-/// Computes the logarithmic average intensity of the given image. The returned value 'outputIntensity'
-/// is multiplied with the RGB values of the input image/tile in optixDenoiserInvoke if given in the parameter
-/// OptixDenoiserParams::hdrIntensity (otherwise 'hdrIntensity' must be a null pointer). This is useful for
-/// denoising HDR images which are very dark or bright.
-/// When denoising tiles the intensity of the entire image should be computed, i.e. not per tile to get
-/// consistent results.
-///
-/// For each RGB pixel in the inputImage the intensity is calculated and summed if it is greater than 1e-8f:
-/// intensity = log(r * 0.212586f + g * 0.715170f + b * 0.072200f).
-/// The function returns 0.18 / exp(sum of intensities / number of summed pixels).
-/// More details could be found in the Reinhard tonemapping paper:
-/// http://www.cmap.polytechnique.fr/~peyre/cours/x2005signal/hdr_photographic.pdf
-///
-/// This function needs scratch memory with a size of at least
-/// sizeof( int ) * ( 2 + inputImage::width * inputImage::height ). When denoising entire images (no tiling)
-/// the same scratch memory as passed to optixDenoiserInvoke could be used.
-//
-/// data type unsigned char is not supported for 'inputImage', it must be 3 or 4 component half/float.
-///
 /// \param[in] denoiser
 /// \param[in] stream
 /// \param[in] inputImage
@@ -870,29 +641,7 @@ OptixResult optixDenoiserComputeIntensity( OptixDenoiser       denoiser,
                                            CUdeviceptr         scratch,
                                            size_t              scratchSizeInBytes );
 
-/// Compute average logarithmic for each of the first three channels for the given image.
-/// When denoising tiles the intensity of the entire image should be computed, i.e. not per tile to get
-/// consistent results.
-/// This function needs scratch memory with a size of at least
-/// sizeof( int ) * ( 3 + 3 * inputImage::width * inputImage::height ). When denoising entire images (no tiling)
-/// the same scratch memory as passed to optixDenoiserInvoke could be used.
-///
-/// data type unsigned char is not supported for 'inputImage', it must be 3 or 4 component half/float.
-///
-/// \param[in] denoiser
-/// \param[in] stream
-/// \param[in] inputImage
-/// \param[out] outputAverageColor three floats
-/// \param[in] scratch
-/// \param[in] scratchSizeInBytes
-OptixResult optixDenoiserComputeAverageColor( OptixDenoiser       denoiser,
-                                              CUstream            stream,
-                                              const OptixImage2D* inputImage,
-                                              CUdeviceptr         outputAverageColor,
-                                              CUdeviceptr         scratch,
-                                              size_t              scratchSizeInBytes );
-
-//@}
+//@ }
 
 #ifdef __cplusplus
 }

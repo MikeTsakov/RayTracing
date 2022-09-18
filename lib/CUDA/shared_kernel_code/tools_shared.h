@@ -1,4 +1,4 @@
-/* tools_shared.h - Copyright 2019/2021 Utrecht University
+/* tools_shared.cu - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ struct ShadingData
 	float3 transmittance; int matID;
 	float4 tint;
 	uint4 parameters;
-	/* 16 uchars:   x: 0..7 = metallic, 8..15 = subsurface, 16..23 = specular, 24..31 = roughness;
-					y: 0..7 = specTint, 8..15 = anisotropic, 16..23 = sheen, 24..31 = sheenTint;
-					z: 0..7 = clearcoat, 8..15 = clearcoatGloss, 16..23 = transmission, 24..31 = dummy;
+	/* 16 uchars:   x: metallic, subsurface, specular, roughness;
+					y: specTint, anisotropic, sheen, sheenTint;
+					z: clearcoat, clearcoatGloss, transmission, dummy;
 					w: eta (32-bit float). */
 	__device__ int IsSpecular( const int layer ) const { return 0; /* for now. */ }
 	__device__ bool IsEmissive() const { return color.x > 1.0f || color.y > 1.0f || color.z > 1.0f; }
@@ -169,7 +169,7 @@ LH2_DEVFUNC uint HDRtoRGB32( const float3& c )
 LH2_DEVFUNC float3 RGB32toHDR( const uint c )
 {
 	return make_float3(
-		(float)(c >> 22) * (1.0f / 1023.0f),
+		(float)(c >> 22)  * (1.0f / 1023.0f),
 		(float)((c >> 11) & 2047) * (1.0f / 2047.0f),
 		(float)(c & 2047) * (1.0f / 2047.0f)
 	);
@@ -182,32 +182,13 @@ LH2_DEVFUNC float3 RGB32toHDRmin1( const uint c )
 		(float)max( 1u, c & 2047 ) * (1.0f / 2047.0f) );
 }
 
-LH2_DEVFUNC float SphericalTheta( const float3& v )
+LH2_DEVFUNC float4 SampleSkydome( const float3 D, const int pathLength )
 {
-	return std::acos( clamp( v.z, -1.f, 1.f ) );
-}
-
-LH2_DEVFUNC float SphericalPhi( const float3& v )
-{
-	const float p = std::atan2( v.y, v.x );
-	return (p < 0) ? (p + 2 * PI) : p;
-}
-
-LH2_DEVFUNC float3 SampleSkydome( const float3& D )
-{
-	const uint u = (uint)(skywidth * SphericalPhi( D ) * INV2PI - 0.5f);
-	const uint v = (uint)(skyheight * SphericalTheta( D ) * INVPI - 0.5f);
-	const uint idx = u + v * skywidth;
-	return idx < skywidth* skyheight ? make_float3( skyPixels[idx] ) : make_float3( 0 );
-}
-
-LH2_DEVFUNC float3 SampleSmallSkydome( const float3& D )
-{
-	const uint w = skywidth >> 6, h = skyheight >> 6;
-	const uint u = (uint)(w * SphericalPhi( D ) * INV2PI - 0.5f);
-	const uint v = (uint)(h * SphericalTheta( D ) * INVPI - 0.5f);
-	const uint idx = u + v * w;
-	return idx < w* h ? make_float3( skyPixels[idx + skywidth * skyheight] ) : make_float3( 0 );
+	// formulas by Paul Debevec, http://www.pauldebevec.com/Probes
+	uint u = (uint)(skywidth * 0.5f * (1.0f + atan2( D.x, -D.z ) * INVPI));
+	uint v = (uint)(skyheight * acos( D.y ) * INVPI);
+	uint idx = u + v * skywidth;
+	return idx < skywidth * skyheight ? make_float4( skyPixels[idx], 1.0f ) : make_float4( 0 );
 }
 
 LH2_DEVFUNC float SurvivalProbability( const float3& albedo )
@@ -227,29 +208,80 @@ LH2_DEVFUNC float FresnelDielectricExact( const float3& wo, const float3& N, flo
 	return 0.5f * (Rs * Rs + Rp * Rp);
 }
 
+LH2_DEVFUNC float3 Tangent2World( const float3& V, const float3& N )
+{
+	// "Building an Orthonormal Basis, Revisited"
+	float sign = copysignf( 1.0f, N.z );
+	const float a = -1.0f / (sign + N.z);
+	const float b = N.x * N.y * a;
+	const float3 B = make_float3( 1.0f + sign * N.x * N.x * a, sign * b, -sign * N.x );
+	const float3 T = make_float3( b, sign + N.y * N.y * a, -N.y );
+	return V.x * T + V.y * B + V.z * N;
+}
+
+LH2_DEVFUNC float3 Tangent2World( const float3& V, const float3& N,  const float3& T, const float3& B )
+{
+	return V.x * T + V.y * B + V.z * N;
+}
+
+LH2_DEVFUNC float3 World2Tangent( const float3& V, const float3& N )
+{
+	float sign = copysignf( 1.0f, N.z );
+	const float a = -1.0f / (sign + N.z);
+	const float b = N.x * N.y * a;
+	const float3 B = make_float3( 1.0f + sign * N.x * N.x * a, sign * b, -sign * N.x );
+	const float3 T = make_float3( b, sign + N.y * N.y * a, -N.y );
+	return make_float3( dot( V, T ), dot( V, B ), dot( V, N ) );
+}
+
+LH2_DEVFUNC float3 World2Tangent( const float3& V, const float3& N, const float3& T, const float3& B )
+{
+	return make_float3( dot( V, T ), dot( V, B ), dot( V, N ) );
+}
+
+LH2_DEVFUNC float3 DiffuseReflectionUniform( const float r0, const float r1 )
+{
+	const float term1 = TWOPI * r0, term2 = sqrtf( 1 - r1 * r1 );
+	float s, c;
+	__sincosf( term1, &s, &c );
+	return make_float3( c * term2, s * term2, r1 );
+}
+
+LH2_DEVFUNC float3 DiffuseReflectionCosWeighted( const float r0, const float r1 )
+{
+	const float term1 = TWOPI * r0, term2 = sqrtf( 1 - r1 );
+	float s, c;
+	__sincosf( term1, &s, &c );
+	return make_float3( c * term2, s * term2, sqrtf( r1 ) );
+}
+
+LH2_DEVFUNC float3 UniformSampleSphere( const float r0, const float r1 )
+{
+	const float z = 1.0f - 2.0f * r1; // [-1~1]
+	const float term1 = TWOPI * r0, term2 = sqrtf( 1 - z * z );
+	float s, c;
+	__sincosf( term1, &s, &c );
+	return make_float3( c * term2, s * term2, z );
+}
+
+LH2_DEVFUNC float3 UniformSampleCone( const float r0, const float r1, const float cos_outer )
+{
+	float cosTheta = 1.0f - r1 + r1 * cos_outer;
+	float term2 = sqrtf( 1 - cosTheta * cosTheta );
+	const float term1 = TWOPI * r0;
+	float s, c;
+	__sincosf( term1, &s, &c );
+	return make_float3( c * term2, s * term2, cosTheta );
+}
+
 // origin offset
+
 LH2_DEVFUNC float3 SafeOrigin( const float3& O, const float3& R, const float3& N, const float geoEpsilon )
 {
-#if 1
-	// simply offset along the normal
-	return O + N * (dot( N, R ) > 0 ? geoEpsilon : -geoEpsilon);
-#else
-#if 0
-	// from Ray Tracing Gems 1, chapter 6: does not use geoEpsilon nor ray direction.
-	const float3 _N = dot( N, R ) > 0 ? N : (-N);
-	int3 of_i = make_int3( 256.0f * _N.x, 256.0f * _N.y, 256.0f * _N.z );
-	float3 p_i = make_float3(
-		__int_as_float( __float_as_int( O.x ) + ((O.x < 0) ? -of_i.x : of_i.x) ),
-		__int_as_float( __float_as_int( O.y ) + ((O.y < 0) ? -of_i.y : of_i.y) ),
-		__int_as_float( __float_as_int( O.z ) + ((O.z < 0) ? -of_i.z : of_i.z) ) );
-	return make_float3( fabsf( O.x ) < (1.0f / 32.0f) ? O.x + (1.0f / 65536.0f) * _N.x : p_i.x,
-		fabsf( O.y ) < (1.0f / 32.0f) ? O.y + (1.0f / 65536.0f) * _N.y : p_i.y,
-		fabsf( O.z ) < (1.0f / 32.0f) ? O.z + (1.0f / 65536.0f) * _N.z : p_i.z );
-#else
 	// offset outgoing ray direction along R and / or N: along N when strongly parallel to the origin surface; mostly along R otherwise
 	const float parallel = 1 - fabs( dot( N, R ) );
 	const float v = parallel * parallel;
-#if 1
+#if 0
 	// we can go slightly into the surface when iN != N; negate the offset along N in that case
 	const float side = dot( N, R ) < 0 ? -1 : 1;
 #else
@@ -257,8 +289,6 @@ LH2_DEVFUNC float3 SafeOrigin( const float3& O, const float3& R, const float3& N
 	const float side = 1.0f;
 #endif
 	return O + R * geoEpsilon * (1 - v) + N * side * geoEpsilon * v;
-#endif
-#endif
 }
 
 // consistent normal interpolation
@@ -303,7 +333,7 @@ LH2_DEVFUNC float3 GetIndirectFromFloat4( const float4& X )
 	return make_float3( (float)(v2 >> 16) * (1.0f / 2048.0f), (float)(v2 & 65535) * (1.0f / 2048.0f), (float)v3 * (1.0f / 2048.0f) );
 }
 
-LH2_DEVFUNC float blueNoiseSampler( const uint* blueNoise, int x, int y, int sampleIndex, int sampleDimension, const float noiseShift = 0 )
+LH2_DEVFUNC float blueNoiseSampler( const uint* blueNoise, int x, int y, int sampleIndex, int sampleDimension )
 {
 	// Adapated from E. Heitz. Arguments:
 	// sampleIndex: 0..255
@@ -316,24 +346,7 @@ LH2_DEVFUNC float blueNoiseSampler( const uint* blueNoise, int x, int y, int sam
 	// if the dimension is optimized, xor sequence value based on optimized scrambling
 	value ^= blueNoise[(sampleDimension & 7) + (x + y * 128) * 8 + 65536];
 	// convert to float and return
-	float retVal = (0.5f + value) * (1.0f / 256.0f) + noiseShift;
-	if (retVal >= 1) retVal -= 1;
-	return retVal;
-}
-
-LH2_DEVFUNC float4 blueNoiseSampler4( const uint* blueNoise, int x, int y, int sampleIndex, int sampleDimension )
-{
-	// Optimized retrieval of 4 blue noise samples.
-	const uint4 bn4 = *((uint4*)(blueNoise + sampleDimension + (x + y * 128) * 8 + 65536 * 3));
-	const int rsi1 = (sampleIndex ^ bn4.x) & 255, rsi2 = (sampleIndex ^ bn4.y) & 255;
-	const int rsi3 = (sampleIndex ^ bn4.z) & 255, rsi4 = (sampleIndex ^ bn4.w) & 255;
-	const int v1 = blueNoise[sampleDimension + 0 + rsi1 * 256];
-	const int v2 = blueNoise[sampleDimension + 1 + rsi2 * 256];
-	const int v3 = blueNoise[sampleDimension + 2 + rsi3 * 256];
-	const int v4 = blueNoise[sampleDimension + 3 + rsi4 * 256];
-	const uint4 bx4 = *((uint4*)(blueNoise + (sampleDimension & 7) + (x + y * 128) * 8 + 65536));
-	return make_float4( (0.5f + (v1 ^ bx4.x)) * (1.0f / 256.0f), (0.5f + (v2 ^ bx4.y)) * (1.0f / 256.0f),
-		(0.5f + (v3 ^ bx4.z)) * (1.0f / 256.0f), (0.5f + (v4 ^ bx4.w)) * (1.0f / 256.0f) );
+	return (0.5f + value) * (1.0f / 256.0f);
 }
 
 // EOF

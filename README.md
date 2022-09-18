@@ -1,28 +1,16 @@
-# lighthouse2 fork by Teodor Nikolov & Mihail Tsakov
-This repo is a fork of the lighthouse2 rendering engine that was used to implement a real-time path tracer as part of the Advanced Graphics course at Utrecht University.
-You can build the source yourself to check it out, or you can look at the releases for a demo of the program.
-
-<p align='center'><img width='600px' src='https://user-images.githubusercontent.com/23489933/147778386-c0882c2b-4a0c-4126-a7f7-8950836c4d92.png'></p>
-
-**The master branch does not contain the actual files of the assignments. Use the 'assignment' branch for this.** I was not able to figure out how to fork an old commit except to fork the current repo and branch from an old commit. If you have any idea how I could do it _properly_, please slap a comment wherever possible or just contact me through my GitHub account.
-
-And thanks to @jbikker for being the awesome teacher he is.
-
-<p align='center'><img width='600px' src='https://user-images.githubusercontent.com/23489933/147784559-d3db444a-6a60-4b39-931d-bfdf35fe8de7.gif'></p>
-
-# lighthouse2 - Official README
+# lighthouse2
 Lighthouse 2 framework for real-time ray tracing
 
 This is the public repo for Lighthouse 2, a rendering framework for real-time ray tracing / path tracing experiments. 
 Lighthouse 2 uses a state-of-the-art wavefront / streaming ray tracing implementation to reach high ray througput on RTX hardware 
-(using Optix 7.2) and pre-RTX hardware (using Optix 5 Prime) and soon on AMD hardware (using RadeonRays / OpenCL) and CPUs (using Embree).
+(using Optix 7) and pre-RTX hardware (using Optix 5 Prime) and soon on AMD hardware (using RadeonRays / OpenCL) and CPUs (using Embree).
 A software rasterizer is also included, mostly as an example of a minimal API implementation.
 
 ![ScreenShot](/screenshots/lighthouse_cobra.png)
 
 Quick pointers / Important advice:
 
-* Building Lighthouse 2: Since February 2020, Lighthouse requires Visual Studio 2019. The CUDA-based cores require CUDA 11.1.
+* Building Lighthouse 2: CUDA 10 currently does *not* properly support vs2019; use vs2017 for now.
 * Lighthouse 2 wiki: https://github.com/jbikker/lighthouse2/wiki (early stages)
 * Trouble shooting page on the wiki: https://github.com/jbikker/lighthouse2/wiki/TroubleShooting
 * Lighthouse 2 forum: https://ompf2.com/viewforum.php?f=18
@@ -62,16 +50,15 @@ from core development.
 
 <b>What it is not</b>
 
-The ray tracing infrastructure (with related scene management acceleration structure maintenance) should be close to optimal. 
-The implemented estimators however (unidirectional path tracers without filtering and blue noise) are not, and neither is the shading
+The ray tracing infrastructure (with related scene management acceleration structure maintenance) should be close to optimal. The implemented estimators however (unidirectional path tracers without filtering and blue noise) are not, and neither is the shading
 model (Lambert + speculars). This may or may not change depending on the use cases encountered. This video shows what can be
 achieved with the platform: https://youtu.be/uEDTtu2ky3o .
 
-Lighthouse 2 should compile out-of-the-box on Windows using Visual Studio 2019. For the CUDA/Optix based cores CUDA 11.1 is required:
+Lighthouse 2 should compile out-of-the-box on Windows using Visual Studio 2017 / 2019. For the CUDA/Optix based cores CUDA 10.2 is required:
 
 https://developer.nvidia.com/cuda-downloads
 
-Optix 5.x, 6.0 and 7.2 libraries are included in the Lighthouse 2 download and do not have to be downloaded separately.
+Optix 5.x, 6.0 and 7.0 libraries are included in the Lighthouse 2 download.
 
 For more information on Lighthouse 2 please visit: http://jacco.ompf2.com.
 

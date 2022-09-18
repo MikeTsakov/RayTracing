@@ -1,4 +1,4 @@
-/* host_node.h - Copyright 2019/2021 Utrecht University
+/* host_node.h - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public:
 	int meshID = -1;					// id of the mesh this node refers to (if any, -1 otherwise)
 	int skinID = -1;					// id of the skin this node refers to (if any, -1 otherwise)
 	vector<float> weights;				// morph target weights
-	bool hasLights = false;				// true if this instance uses an emissive material
+	bool hasLTris = false;				// true if this instance uses an emissive material
 	bool morphed = false;				// node mesh should update pose
 	bool transformed = false;			// local transform of node should be updated
 	bool treeChanged = false;			// this node or one of its children got updated

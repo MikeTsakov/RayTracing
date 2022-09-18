@@ -1,4 +1,4 @@
-/* core_mesh.cpp - Copyright 2019/2021 Utrecht University
+/* core_mesh.cpp - Copyright 2019 Utrecht University
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ CoreMesh::~CoreMesh()
 	Cleanup();
 }
 
-void CoreMesh::SetGeometry( const float4 *vertexData, const int vertexCount, const int triCount, const CoreTri *tris )
+void CoreMesh::SetGeometry( const float4 *vertexData, const int vertexCount, const int triCount, const CoreTri *tris, const uint *alphaFlags )
 {
 	const bool sameTriCount = triangles && (triangles->GetSize() / sizeof( CoreTri ) == triCount);
 
