@@ -49,24 +49,59 @@ void PrepareScene()
 	renderer->SetNodeTransform( rootNode, mat4::RotateX( -PI / 2 ) );
 	animPaused = true;
 #else
-	if (TESTTYPE != TestType::NONE) {
+	if (SCENETYPE != SceneType::NONE) {
 		Camera* camera = renderer->GetCamera();
 		camera->position = DEFAULTCAMERAPOSITION;
 		camera->direction = DEFAULTCAMERADIRECTION;
 		camera->FOV = DEFAULTFOV;
 	}
-	switch (TESTTYPE) {
-	case TestType::WHITTED: {
+	switch (SCENETYPE) {
+	case SceneType::NONE: {
+		materialFile = string("data/pica/pica_materials.xml");
+		renderer->AddScene("default_scene.gltf", "data/pica/", mat4::Translate(0, -10.2f, 0));
+		int rootNode = renderer->FindNode("RootNode (gltf orientation matrix)");
+		renderer->SetNodeTransform(rootNode, mat4::RotateX(-PI / 2));
+		renderer->AddPointLight(float3({ 5.0, 7.0, 5.0 }), float3({ 200, 200, 200 }));
+		break;
+	}
+	case SceneType::RAYPACKET: {
+		materialFile = string("data/pica/pica_materials.xml");
+		renderer->AddPointLight(float3({ 0, 5, 5 }), float3({ 200, 200, 200}));
+		renderer->AddScene("default_scene.gltf", "data/pica/");
+		//renderer->AddScene("scene.gltf", "data/pica/fox/");
+		Camera* camera = renderer->GetCamera();
+		camera->position = DEFAULTCAMERAPOSITION;
+		camera->direction = DEFAULTCAMERADIRECTION;
+		break;
+	}
+	case SceneType::BVH: {
+		materialFile = string("data/pica/pica_materials.xml");
+		renderer->AddPointLight(float3({ -200, 200, 75}), float3({ 40000, 40000, 40000 }));
+		renderer->AddScene("scene.gltf", "data/pica/fox/", mat4::Translate(0, 0, 0));
+		//renderer->AddScene("scene.gltf", "data/pica/fox/", mat4::Translate(-50, 0, -150));
+		//renderer->AddScene("scene.gltf", "data/pica/fox/", mat4::Translate(50, 0, -150));
+		//renderer->AddScene("untitled.gltf", "data/pica/", mat4::Translate(0, 75, 125));
+		int gun = renderer->AddMesh("hp.obj", "data/verybigmeshes/gun2/", 4);
+		renderer->AddInstance(gun, mat4::Translate(0, 70, 15) * mat4::RotateY(PI));
+		Camera* camera = renderer->GetCamera();
+		camera->position = FOXCAMERAPOSITION;
+		camera->direction = FOXCAMERADIRECTION;
+		break;
+	}
+	case SceneType::WHITTED: {
 		materialFile = string("data/pica/pica_materials.xml");
 		renderer->AddScene("default_scene.gltf", "data/pica/", mat4::Translate(0, -10.2f, 0));
 		int rootNode = renderer->FindNode("RootNode (gltf orientation matrix)");
 		renderer->SetNodeTransform(rootNode, mat4::RotateX(-PI / 2));
 		renderer->AddPointLight(float3({ 5.0, 7.0, 5.0 }), float3({ 200, 200, 200 }));
 		int cube = renderer->AddMesh("cube_textured.obj", "data/pica/", 2);
-		renderer->AddInstance(cube);
+		mat4 transform = mat4();
+		transform.Identity();
+		transform.cell[0] = 4.0;
+		int instance1 = renderer->AddInstance(cube, transform);
 		break;
 	}
-	case TestType::DIELECTRIC: {
+	case SceneType::DIELECTRIC: {
 		materialFile = string("data/pica/pica_materials.xml");
 		renderer->AddScene("default_scene.gltf", "data/pica/", mat4::Translate(0, -10.2f, 0));
 		int rootNode = renderer->FindNode("RootNode (gltf orientation matrix)");
@@ -78,7 +113,7 @@ void PrepareScene()
 		camera->FOV = DEFAULTFOV;
 		break;
 	}
-	case TestType::SPOTLIGHT: {
+	case SceneType::SPOTLIGHT: {
 		materialFile = string("data/pica/pica_materials.xml");
 		renderer->AddScene("default_scene.gltf", "data/pica/", mat4::Translate(0, -10.2f, 0));
 		int rootNode = renderer->FindNode("RootNode (gltf orientation matrix)");
@@ -89,7 +124,7 @@ void PrepareScene()
 			0.9, 0.8, float3({ 150, 150, 150 }));
 		break;
 	}
-	case TestType::DIRECTIONALLIGHT: {
+	case SceneType::DIRECTIONALLIGHT: {
 		materialFile = string("data/pica/pica_materials.xml");
 		renderer->AddScene("directional_scene.gltf", "data/pica/", mat4::Translate(0, -10.2f, 0));
 		int rootNode = renderer->FindNode("RootNode (gltf orientation matrix)");
@@ -99,7 +134,7 @@ void PrepareScene()
 		camera->position = DIRECTIONALCAMERAPOSITION;
 		break;
 	}
-	case TestType::AREALIGHT: {
+	case SceneType::AREALIGHT: {
 		materialFile = string("data/pica/pica_materials.xml");
 		renderer->AddScene("default_scene.gltf", "data/pica/", mat4::Translate(0, -10.2f, 0));
 		int rootNode = renderer->FindNode("RootNode (gltf orientation matrix)");
@@ -135,7 +170,7 @@ void PrepareScene()
 bool HandleInput( float frameTime )
 {
 	// handle keyboard input
-	float tspd = (keystates[GLFW_KEY_LEFT_SHIFT] ? 0.5f : 5.0f) * frameTime, rspd = 2.5f * frameTime;
+	float tspd = (keystates[GLFW_KEY_LEFT_SHIFT] ? 100.0f : 50.0f) * frameTime, rspd = 2.5f * frameTime;
 	bool changed = false;
 	Camera *camera = renderer->GetCamera();
 	if (keystates[GLFW_KEY_A]) { changed = true; camera->TranslateRelative( make_float3( -tspd, 0, 0 ) ); }

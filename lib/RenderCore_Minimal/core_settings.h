@@ -34,11 +34,14 @@ using namespace lighthouse2;
 #include "core_api.h"
 #include "omp.h"
 
+#include "ray.h"
+#include "aabb.h"
+#include "raypacket.h"
+#include "hitinfo.h"
+#include "bvh.h"
 #include "light.h"
 #include "texture.h"
 #include "material.h"
-#include "hitinfo.h"
-#include "ray.h"
 #include "mesh.h"
 
 #include "rendercore.h"

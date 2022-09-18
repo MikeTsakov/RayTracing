@@ -34,14 +34,29 @@ namespace lh2core {
 		}
 	}
 
+	void Mesh::ConstructBVH() {
+		if (VERBOSEBVHCONSTRUCTION) {
+			printf("Mesh %d: Constructing BVH...\n", meshIdx);
+		}
+		bvh->mesh = this;
+		bvh->Build();
+	}
+
+	bool Mesh::Intersect(RayPacket& rayPacket, Frustum& frustum, HitInfo* hitInfo) {
+		return bvh->Traverse(rayPacket, frustum, hitInfo, hitInfo->traverseDepth);
+	}
+
 	bool Mesh::Intersect(const Ray& ray, HitInfo* hitInfo) const {
+#if USEBVH
+		return bvh->Intersect(ray, hitInfo, hitInfo->traverseDepth);
+#else
 		float t = INFINITY;
 		float2 uv = make_float2(-1, -1);
-		CoreTri *intersectedTriangle;
+		CoreTri* intersectedTriangle;
 		bool intersection = false;
 
-		for (int i = 0; i < vcount / 3; i++) {
-			CoreTri *triangle = &triangles[i];
+		for (int i = 0; i < triangleCount; i++) {
+			CoreTri* triangle = &triangles[i];
 			float ttemp = 0;
 			float u = -1;
 			float v = -1;
@@ -66,5 +81,16 @@ namespace lh2core {
 		}
 
 		return intersection;
+#endif
+	}
+
+	void MeshInstance::UpdateTransform(const mat4& transform) {
+		this->transform = transform;
+		this->inverseTransform = this->transform.Inverted();
+		this->directionTransform = this->transform;
+		this->directionTransform.cell[3] =
+		this->directionTransform.cell[7] =
+		this->directionTransform.cell[11] = 0.0;
+		this->inverseDirectionTransform = directionTransform.Inverted();
 	}
 }

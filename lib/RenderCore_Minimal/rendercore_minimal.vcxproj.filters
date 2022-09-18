@@ -11,6 +11,18 @@
     <ClCompile Include="material.cpp">
       <Filter>components</Filter>
     </ClCompile>
+    <ClCompile Include="bvh.cpp">
+      <Filter>components</Filter>
+    </ClCompile>
+    <ClCompile Include="ray.cpp">
+      <Filter>components</Filter>
+    </ClCompile>
+    <ClCompile Include="raypacket.cpp">
+      <Filter>components</Filter>
+    </ClCompile>
+    <ClCompile Include="aabb.cpp">
+      <Filter>components</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="rendercore.h" />
@@ -34,6 +46,15 @@
       <Filter>components</Filter>
     </ClInclude>
     <ClInclude Include="light.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="bvh.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="raypacket.h">
+      <Filter>components</Filter>
+    </ClInclude>
+    <ClInclude Include="aabb.h">
       <Filter>components</Filter>
     </ClInclude>
   </ItemGroup>

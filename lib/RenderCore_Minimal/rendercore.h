@@ -38,16 +38,24 @@ public:
 		const CorePointLight* pointLights, const int pointLightCount,
 		const CoreSpotLight* spotLights, const int spotLightCount,
 		const CoreDirectionalLight* directionalLights, const int directionalLightCount);
+	void UpdateToplevel();
 	bool TraceShadow(const Ray);
-	float3 Trace(const Ray& ray, const int depth);
+	float3 Trace(Ray& ray, const int depth, int& traverseDepth);
+	void Trace(RayPacket& rayPacket, Frustum& frustum, const int depth, int* traverseDepth, float3* colors);
 	float3 DirectIllumination(const float3 intersection, const float3 hitNormal);
-	bool NearestIntersection(const Ray, HitInfo* hitInfo);
+	bool NearestIntersection(Ray& ray, HitInfo* hitInfo);
+	bool NearestIntersection(RayPacket& rayPacket, Frustum& frustum, HitInfo* hitInfo);
 	// internal methods
 private:
 	// data members
 	Bitmap* screen = 0;								// temporary storage of RenderCore output; will be copied to render target
 	int targetTextureID = 0;						// ID of the target OpenGL texture
-	vector<Mesh> meshes;							// mesh data storage
+	vector<Mesh*> meshes;							// mesh data storage
+	vector<MeshInstance*> instances;
+	vector<Light*> lights;
+	vector<Material*> mats;
+	vector<Texture*> texs;
+	TopBVH* topBVH;
 public:
 	CoreStats coreStats;							// rendering statistics
 };

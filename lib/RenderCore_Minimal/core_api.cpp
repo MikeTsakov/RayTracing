@@ -96,7 +96,11 @@ void CoreAPI::SetGeometry( const int meshIdx, const float4* vertexData, const in
 
 void CoreAPI::SetInstance( const int instanceIdx, const int modelIdx, const mat4& transform )
 {
-	// core->SetInstance( instanceIdx, modelIdx, transform ); // TODO; we will just render the meshes for now.
+	core->SetInstance( instanceIdx, modelIdx, transform ); // TODO; we will just render the meshes for now.
+}
+
+void CoreAPI::UpdateToplevel() {
+	core->UpdateToplevel();
 }
 
 // EOF
